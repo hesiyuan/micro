@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yuin/gopher-lua"
+	lua "github.com/yuin/gopher-lua"
 	"github.com/zyedidia/clipboard"
 	"github.com/zyedidia/micro/cmd/micro/shellwords"
 	"github.com/zyedidia/tcell"
@@ -751,7 +751,7 @@ func (v *View) Backspace(usePlugin bool) bool {
 		tabSize := int(v.Buf.Settings["tabsize"].(float64))
 		if v.Buf.Settings["tabstospaces"].(bool) && IsSpaces(lineStart) && utf8.RuneCount(lineStart) != 0 && utf8.RuneCount(lineStart)%tabSize == 0 {
 			loc := v.Cursor.Loc
-			v.Buf.Remove(loc.Move(-tabSize, v.Buf), loc)
+			v.Buf.Remove(loc.Move(-tabSize, v.Buf), loc) // remove event
 		} else {
 			loc := v.Cursor.Loc
 			v.Buf.Remove(loc.Move(-1, v.Buf), loc)

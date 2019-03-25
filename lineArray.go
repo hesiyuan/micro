@@ -32,7 +32,7 @@ func runeToByteIndex(n int, txt []byte) int {
 // A Line contains the data in bytes as well as a highlight state, match
 // and a flag for whether the highlighting needs to be updated
 type Line struct {
-	data []byte
+	data []byte // change byte to pair? not a good idea
 
 	state       highlight.State
 	match       highlight.LineMatch
@@ -63,11 +63,12 @@ func Append(slice []Line, data ...Line) []Line {
 	return slice
 }
 
+// This is called when main initializes
 // NewLineArray returns a new line array from an array of bytes
 func NewLineArray(size int64, reader io.Reader) *LineArray {
 	la := new(LineArray)
 
-	la.lines = make([]Line, 0, 1000)
+	la.lines = make([]Line, 0, 1000) //a thousand line
 
 	br := bufio.NewReader(reader)
 	var loaded int
@@ -146,8 +147,8 @@ func (la *LineArray) SaveString(useCrlf bool) string {
 
 // NewlineBelow adds a newline below the given line number
 func (la *LineArray) NewlineBelow(y int) {
-	la.lines = append(la.lines, Line{[]byte{' '}, nil, nil, false})
-	copy(la.lines[y+2:], la.lines[y+1:])
+	la.lines = append(la.lines, Line{[]byte{' '}, nil, nil, false}) // append one line
+	copy(la.lines[y+2:], la.lines[y+1:])                            // shifting lines under
 	la.lines[y+1] = Line{[]byte{}, la.lines[y].state, nil, false}
 }
 
@@ -156,8 +157,8 @@ func (la *LineArray) insert(pos Loc, value []byte) {
 	x, y := runeToByteIndex(pos.X, la.lines[pos.Y].data), pos.Y
 	// x, y := pos.x, pos.y
 	for i := 0; i < len(value); i++ {
-		if value[i] == '\n' {
-			la.Split(Loc{x, y})
+		if value[i] == '\n' { // if user enters a return, then split
+			la.Split(Loc{x, y}) // this is the underlying split mechanism for lines
 			x = 0
 			y++
 			continue
@@ -193,7 +194,7 @@ func (la *LineArray) Split(pos Loc) {
 }
 
 // removes from start to end
-func (la *LineArray) remove(start, end Loc) string {
+func (la *LineArray) remove(start, end Loc) string { // may also need to support for document
 	sub := la.Substr(start, end)
 	startX := runeToByteIndex(start.X, la.lines[start.Y].data)
 	endX := runeToByteIndex(end.X, la.lines[end.Y].data)

@@ -32,12 +32,14 @@ var (
 
 // Buffer stores the text for files that are loaded into the text editor
 // It uses a rope to efficiently store the string and contains some
-// simple functions for saving and wrapper functions for modifying the rope
+// simple functions for saving and wrapper functions for modifying the rope (what is rope?)
 type Buffer struct {
 	// The eventhandler for undo/redo
 	*EventHandler
 	// This stores all the text in the buffer as an array of lines
 	*LineArray
+	// add document CRDT here
+	*Document
 
 	Cursor    Cursor
 	cursors   []*Cursor // for multiple cursors
@@ -649,18 +651,24 @@ func (b *Buffer) Modified() bool {
 
 func (b *Buffer) insert(pos Loc, value []byte) {
 	b.IsModified = true
-	b.LineArray.insert(pos, value)
+	b.LineArray.insert(pos, value) // TODO: change to b.document.insert
+	// given pos, and a byte array (usually just one byte), insert sequentially to CRDT
+
+	// can use conversion in loc.go to convert to character index first
+
+	// then using insertRight from document.go to insert into CRDT
+
 	b.Update()
 }
 func (b *Buffer) remove(start, end Loc) string {
 	b.IsModified = true
-	sub := b.LineArray.remove(start, end)
+	sub := b.LineArray.remove(start, end) // TODO: change to b.document.remove
 	b.Update()
 	return sub
 }
 func (b *Buffer) deleteToEnd(start Loc) {
 	b.IsModified = true
-	b.LineArray.DeleteToEnd(start)
+	b.LineArray.DeleteToEnd(start) // TODO: change to b.document.remove
 	b.Update()
 }
 
