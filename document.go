@@ -35,8 +35,8 @@ var (
 	End   = []Identifier{{^uint16(0), 0}}
 )
 
-// New creates a new Document containing the given content.
-func New(content []string, clientID uint8) *Document {
+// New creates a new Document containing the given content and a clientID
+func NewDocument(content []string, clientID uint8) *Document {
 	d := &Document{clientID: clientID}
 	d.insert(Start, "")
 	d.insert(End, "")
@@ -109,13 +109,32 @@ func (d *Document) Get(p []Identifier) (string, bool) {
 }
 
 // Insert a new pair at the position, returning success or failure (already existing
-// position).
+// position). Note that atom is a single byte to insert
 func (d *Document) insert(p []Identifier, atom string) bool {
 	i, exists := d.Index(p)
 	if exists {
 		return false
 	}
 	d.pairs = append(d.pairs[0:i], append([]pair{{p, atom}}, d.pairs[i:]...)...)
+	return true
+}
+
+// Given a position identifier, inserts a byte array to the right of the given position
+// Note that this may insert multiple bytes. And it is only local insert
+func (d *Document) insertMultiple(p []Identifier, value []byte) bool {
+	np, success := d.InsertRight(p, string(value[0]))
+	if !success {
+		return false
+	}
+	// CRDT treats every character as the same, no need to split on return
+	for i := 1; i < len(value); i++ { // go through each byte in value[]
+		// notice that the 1st argument to InsertRight is now updated np
+		np, success = d.InsertRight(np, string(value[i]))
+		if !success {
+			return false
+		}
+	}
+
 	return true
 }
 

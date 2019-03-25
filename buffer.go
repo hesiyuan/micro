@@ -125,7 +125,11 @@ func NewBuffer(reader io.Reader, size int64, path string, cursorPosition []strin
 	}
 
 	b := new(Buffer)
-	b.LineArray = NewLineArray(size, reader)
+	// load from existing file?
+	b.LineArray = NewLineArray(size, reader) // why input a reader?
+
+	// create a new document for now, later need to be restored from memory, id set to 1
+	b.Document = NewDocument(strings.Split(b.LineArray.String(), ""), uint8(1))
 
 	b.Settings = DefaultLocalSettings()
 	for k, v := range globalSettings {
@@ -649,15 +653,15 @@ func (b *Buffer) Modified() bool {
 	return buff != b.origHash
 }
 
+// assume for now this is local insert
 func (b *Buffer) insert(pos Loc, value []byte) {
 	b.IsModified = true
 	b.LineArray.insert(pos, value) // TODO: change to b.document.insert
 	// given pos, and a byte array (usually just one byte), insert sequentially to CRDT
-
-	// can use conversion in loc.go to convert to character index first
-
-	// then using insertRight from document.go to insert into CRDT
-
+	// first converts pos into CRDT document index
+	index := ToCharPos(pos, b)
+	// START is at index 0, may be off a little.
+	b.Document.insertMultiple(b.Document.pairs[index].pos, value)
 	b.Update()
 }
 func (b *Buffer) remove(start, end Loc) string {

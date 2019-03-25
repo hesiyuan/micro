@@ -63,7 +63,7 @@ func Append(slice []Line, data ...Line) []Line {
 	return slice
 }
 
-// This is called when main initializes
+// This is called when main initializes. Looks like also support loading from existing file
 // NewLineArray returns a new line array from an array of bytes
 func NewLineArray(size int64, reader io.Reader) *LineArray {
 	la := new(LineArray)
@@ -156,7 +156,7 @@ func (la *LineArray) NewlineBelow(y int) {
 func (la *LineArray) insert(pos Loc, value []byte) {
 	x, y := runeToByteIndex(pos.X, la.lines[pos.Y].data), pos.Y
 	// x, y := pos.x, pos.y
-	for i := 0; i < len(value); i++ {
+	for i := 0; i < len(value); i++ { // go through each byte in value[]
 		if value[i] == '\n' { // if user enters a return, then split
 			la.Split(Loc{x, y}) // this is the underlying split mechanism for lines
 			x = 0
