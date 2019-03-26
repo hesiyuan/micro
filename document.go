@@ -117,6 +117,7 @@ func (d *Document) insert(p []Identifier, atom string) bool {
 	if exists {
 		return false
 	}
+	// this is harmful for rach condition
 	d.pairs = append(d.pairs[0:i], append([]pair{{p, atom}}, d.pairs[i:]...)...)
 	return true
 }
@@ -202,11 +203,11 @@ func random(x, y uint16) uint16 {
 // are equal, or the left is greater than right, position cannot be generated).
 // Later will be optimized if time permits to LSEQ
 func GeneratePos(lp, rp []Identifier, site uint8) ([]Identifier, bool) {
-	if ComparePos(lp, rp) != -1 {
+	if ComparePos(lp, rp) != -1 { // lp should be less than rp
 		return nil, false
 	}
 	p := []Identifier{}
-	for i := 0; i < len(lp); i++ {
+	for i := 0; i < len(lp); i++ { // why len(lp)? could be len(rp)
 		l := lp[i]
 		r := rp[i]
 		if l.Ident == r.Ident && l.Site == r.Site {
@@ -222,7 +223,11 @@ func GeneratePos(lp, rp []Identifier, site uint8) ([]Identifier, bool) {
 			} else if site < r.Site {
 				p = append(p, Identifier{r.Ident, site})
 			} else {
+				// if lp[i+1] does not exist, then min := 0, else
 				min := uint16(0)
+				if len(lp) > i+1 {
+					min = lp[i+1].Ident // this should be lp[i+1].Ident
+				} // TODO: edge case need to check if min = max - 1
 				if len(lp) > len(rp) {
 					min = lp[len(rp)].Ident
 					// Super edge case
@@ -237,8 +242,8 @@ func GeneratePos(lp, rp []Identifier, site uint8) ([]Identifier, bool) {
 						p = append(p, Identifier{r, site})
 						return p, true
 					}
-				}
-				r := random(min, ^uint16(0))
+				} // lp is shorter
+				r := random(min, ^uint16(0)) // if min = ^uint16(0) - 1, then, need to append one more
 				p = append(p, Identifier{l.Ident, l.Site}, Identifier{r, site})
 			}
 		} else {
@@ -291,7 +296,7 @@ func (d *Document) InsertRight(p []Identifier, atom string) ([]Identifier, bool)
 	if !success {
 		return nil, false
 	}
-	np, success := d.GeneratePos(p, rp)
+	np, success := d.GeneratePos(p, rp) // generate a position identifier between p and rp
 	if !success {
 		return nil, false
 	}

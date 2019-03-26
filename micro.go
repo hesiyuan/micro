@@ -481,7 +481,7 @@ func main() {
 	go func() {
 		for {
 			if screen != nil {
-				events <- screen.PollEvent()
+				events <- screen.PollEvent() // for screen events
 			}
 		}
 	}()
@@ -495,14 +495,19 @@ func main() {
 		}
 	}()
 
-	for {
+	// can add a async routine here for listening from the network
+	// use CurView().Buf to access the buffer and insert and delete
+	// TODO:
+
+
+	for { // main infinite loop
 		// Display everything
-		RedrawAll()
+		RedrawAll() // this is called after each event is executed
 
 		var event tcell.Event
 
 		// Check for new events
-		select {
+		select { // select blocks until one of the cases is able to run
 		case f := <-jobs:
 			// If a new job has finished while running in the background we should execute the callback
 			f.function(f.output, f.args...)
@@ -515,10 +520,10 @@ func main() {
 			continue
 		case vnum := <-closeterm:
 			tabs[curTab].Views[vnum].CloseTerminal()
-		case event = <-events:
+		case event = <-events: // receive from screen events
 		}
 
-		for event != nil {
+		for event != nil { 
 			didAction := false
 
 			switch e := event.(type) {
@@ -579,15 +584,15 @@ func main() {
 					// to run instead of the standard HandleEvent.
 					HandleSearchEvent(event, CurView())
 				} else {
-					// Send it to the view (view.go)
+					// Send it to the view (view.go). Mostly keyboard events are handled here
 					CurView().HandleEvent(event)
 				}
 			}
 
-			select {
-			case event = <-events:
+			select { // select blocks until one of the cases is able to run
+			case event = <-events: // receive from screen events
 			default:
-				event = nil
+				event = nil // if no events received, set to nil, this will exit the inner for loop
 			}
 		}
 	}
