@@ -35,11 +35,11 @@ type Delta struct {
 	End   Loc
 }
 
-// ExecuteTextEvent runs a text event
+// ExecuteTextEvent runs a text event. This modifies the buffer
 func ExecuteTextEvent(t *TextEvent, buf *Buffer) {
 	if t.EventType == TextEventInsert {
 		for _, d := range t.Deltas {
-			buf.insert(d.Start, []byte(d.Text))
+			buf.insert(d.Start, []byte(d.Text)) // insert to both lineArray and CRDT
 		}
 	} else if t.EventType == TextEventRemove {
 		for i, d := range t.Deltas {
@@ -66,7 +66,7 @@ func UndoTextEvent(t *TextEvent, buf *Buffer) {
 
 // EventHandler executes text manipulations and allows undoing and redoing
 type EventHandler struct {
-	buf       *Buffer
+	buf       *Buffer // a pointer to buffer
 	UndoStack *Stack
 	RedoStack *Stack
 }
@@ -192,7 +192,7 @@ func (eh *EventHandler) Execute(t *TextEvent) {
 		}
 	}
 
-	ExecuteTextEvent(t, eh.buf)
+	ExecuteTextEvent(t, eh.buf) // important
 }
 
 // Undo the first event in the undo stack

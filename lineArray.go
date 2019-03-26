@@ -63,6 +63,7 @@ func Append(slice []Line, data ...Line) []Line {
 	return slice
 }
 
+// reader can be thought as a file descriptor
 // This is called when main initializes. Looks like also support loading from existing file
 // NewLineArray returns a new line array from an array of bytes
 func NewLineArray(size int64, reader io.Reader) *LineArray {
@@ -75,7 +76,7 @@ func NewLineArray(size int64, reader io.Reader) *LineArray {
 
 	n := 0
 	for {
-		data, err := br.ReadBytes('\n')
+		data, err := br.ReadBytes('\n') // read until first occurrence of '\n'
 		if len(data) > 1 && data[len(data)-2] == '\r' {
 			data = append(data[:len(data)-2], '\n')
 			if fileformat == 0 {
@@ -96,7 +97,7 @@ func NewLineArray(size int64, reader io.Reader) *LineArray {
 		}
 
 		if loaded >= 0 {
-			loaded += len(data)
+			loaded += len(data) // loaded store the amoung of bytes read so far
 		}
 
 		if err != nil {
@@ -108,9 +109,9 @@ func NewLineArray(size int64, reader io.Reader) *LineArray {
 			break
 		} else {
 			// la.lines = Append(la.lines, Line{data[:len(data)-1]})
-			la.lines = Append(la.lines, Line{data[:len(data)-1], nil, nil, false})
+			la.lines = Append(la.lines, Line{data[:len(data)-1], nil, nil, false}) // append
 		}
-		n++
+		n++ // n stores the number of lines read so far
 	}
 
 	return la
@@ -122,7 +123,7 @@ func (la *LineArray) String() string {
 	for i, l := range la.lines {
 		str += string(l.data)
 		if i != len(la.lines)-1 {
-			str += "\n"
+			str += "\n" // need to add \n as it is not stored in lineArray
 		}
 	}
 	return str
@@ -147,9 +148,9 @@ func (la *LineArray) SaveString(useCrlf bool) string {
 
 // NewlineBelow adds a newline below the given line number
 func (la *LineArray) NewlineBelow(y int) {
-	la.lines = append(la.lines, Line{[]byte{' '}, nil, nil, false}) // append one line
+	la.lines = append(la.lines, Line{[]byte{' '}, nil, nil, false}) // append one line, why ' '?
 	copy(la.lines[y+2:], la.lines[y+1:])                            // shifting lines under
-	la.lines[y+1] = Line{[]byte{}, la.lines[y].state, nil, false}
+	la.lines[y+1] = Line{[]byte{}, la.lines[y].state, nil, false}   // ' ' disappeared.. 
 }
 
 // inserts a byte array at a given location
@@ -190,15 +191,15 @@ func (la *LineArray) Split(pos Loc) {
 	la.lines[pos.Y].match = nil
 	la.lines[pos.Y+1].match = nil
 	la.lines[pos.Y].rehighlight = true
-	la.DeleteToEnd(Loc{pos.X, pos.Y})
+	la.DeleteToEnd(Loc{pos.X, pos.Y}) // not sure why do this?
 }
 
-// removes from start to end
+// removes from start to end, also forms the deleted substring
 func (la *LineArray) remove(start, end Loc) string { // may also need to support for document
 	sub := la.Substr(start, end)
 	startX := runeToByteIndex(start.X, la.lines[start.Y].data)
 	endX := runeToByteIndex(end.X, la.lines[end.Y].data)
-	if start.Y == end.Y {
+	if start.Y == end.Y { // if a line is deleted in the middle, merge the gap
 		la.lines[start.Y].data = append(la.lines[start.Y].data[:startX], la.lines[start.Y].data[endX:]...)
 	} else {
 		for i := start.Y + 1; i <= end.Y-1; i++ {

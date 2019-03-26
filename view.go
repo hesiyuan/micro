@@ -514,7 +514,7 @@ func (v *View) ExecuteActions(actions []func(*View, bool) bool) bool {
 	readonlyBindingsList := []string{"Delete", "Insert", "Backspace", "Cut", "Play", "Paste", "Move", "Add", "DuplicateLine", "Macro"}
 	for _, action := range actions {
 		readonlyBindingsResult := false
-		funcName := ShortFuncName(action)
+		funcName := ShortFuncName(action) // get function name 
 		curv := CurView()
 		if curv.Type.Readonly == true {
 			// check for readonly and if true only let key bindings get called if they do not change the contents.
@@ -525,7 +525,7 @@ func (v *View) ExecuteActions(actions []func(*View, bool) bool) bool {
 			}
 		}
 		if !readonlyBindingsResult {
-			// call the key binding
+			// call the key binding, different functions in actions.go
 			relocate = action(curv, true) || relocate
 			// Macro
 			if funcName != "ToggleMacro" && funcName != "PlayMacro" {
@@ -600,14 +600,14 @@ func (v *View) HandleEvent(event tcell.Event) {
 		// Check first if input is a key binding, if it is we 'eat' the input and don't insert a rune
 		isBinding := false
 		for key, actions := range bindings {
-			if e.Key() == key.keyCode {
+			if e.Key() == key.keyCode { // check what is the key
 				if e.Key() == tcell.KeyRune {
 					if e.Rune() != key.r {
 						continue
 					}
 				}
 				if e.Modifiers() == key.modifiers {
-					for _, c := range v.Buf.cursors {
+					for _, c := range v.Buf.cursors { // for each cursor position, do
 						ok := v.SetCursor(c)
 						if !ok {
 							break

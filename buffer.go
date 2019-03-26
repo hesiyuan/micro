@@ -79,7 +79,7 @@ type SerializedBuffer struct {
 	ModTime      time.Time
 }
 
-// NewBufferFromFile opens a new buffer using the given path
+// NewBufferFromFile opens a new buffer using the **given path**
 // It will also automatically handle `~`, and line/column with filename:l:c
 // It will return an empty buffer if the path does not exist
 // and an error if the file is a directory
@@ -126,7 +126,7 @@ func NewBuffer(reader io.Reader, size int64, path string, cursorPosition []strin
 
 	b := new(Buffer)
 	// load from existing file?
-	b.LineArray = NewLineArray(size, reader) // why input a reader?
+	b.LineArray = NewLineArray(size, reader) // reader contains a file desciptor opened
 
 	// create a new document for now, later need to be restored from memory, id set to 1
 	b.Document = NewDocument(strings.Split(b.LineArray.String(), ""), uint8(1))
@@ -459,6 +459,7 @@ func init() {
 	gob.Register(SerializedBuffer{})
 }
 
+// This is the real save file implementation
 // SaveAs saves the buffer to a specified path (filename), creating the file if it does not exist
 func (b *Buffer) SaveAs(filename string) error {
 	b.UpdateRules()
@@ -508,6 +509,7 @@ func (b *Buffer) SaveAs(filename string) error {
 
 	var fileSize int
 
+	// the following supplies an anonymous function for writing lines, add support for CRDT here
 	err := overwriteFile(absFilename, func(file io.Writer) (e error) {
 		if len(b.lines) == 0 {
 			return
@@ -522,11 +524,11 @@ func (b *Buffer) SaveAs(filename string) error {
 			eol = []byte{'\n'}
 		}
 
-		// write lines
+		// write the first line
 		if fileSize, e = file.Write(b.lines[0].data); e != nil {
 			return
 		}
-
+		// write lines
 		for _, l := range b.lines[1:] {
 			if _, e = file.Write(eol); e != nil {
 				return
@@ -537,6 +539,46 @@ func (b *Buffer) SaveAs(filename string) error {
 			}
 
 			fileSize += len(eol) + len(l.data)
+		}
+
+		return
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// save CRDT document here, may need to Serialize
+	var crdtDocument = "CRDT" + absFilename
+
+	err = overwriteFile(crdtDocument, func(file io.Writer) (e error) {
+		// end of line
+		var eol []byte
+		if b.Settings["fileformat"] == "dos" {
+			eol = []byte{'\r', '\n'}
+		} else {
+			eol = []byte{'\n'}
+		}
+
+		// data is []string
+		data := strings.Split(b.Document.Content(), "\n")
+
+		// write the first line
+		if fileSize, e = file.Write([]byte(data[0])); e != nil {
+			return
+		}
+
+		// write lines
+		for _, line := range data[1:] {
+			if _, e = file.Write(eol); e != nil {
+				return
+			}
+
+			if _, e = file.Write([]byte(line)); e != nil {
+				return
+			}
+
+			fileSize += len(eol) + len([]byte(line))
 		}
 
 		return
@@ -561,7 +603,7 @@ func (b *Buffer) SaveAs(filename string) error {
 }
 
 // overwriteFile opens the given file for writing, truncating if one exists, and then calls
-// the supplied function with the file as io.Writer object, also making sure the file is
+// the **supplied function fn ** with the file as io.Writer object, also making sure the file is
 // closed afterwards.
 func overwriteFile(name string, fn func(io.Writer) error) (err error) {
 	var file *os.File
@@ -658,15 +700,24 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	b.IsModified = true
 	b.LineArray.insert(pos, value) // TODO: change to b.document.insert
 	// given pos, and a byte array (usually just one byte), insert sequentially to CRDT
-	// first converts pos into CRDT document index
-	index := ToCharPos(pos, b)
+	// first converts pos into CRDT document index. The index is the would-be inserted index
+	index := ToCharPos(pos, b) // may need to be called before linearray insert
 	// START is at index 0, may be off a little.
 	b.Document.insertMultiple(b.Document.pairs[index].pos, value)
 	b.Update()
 }
-func (b *Buffer) remove(start, end Loc) string {
+
+// remove from start up to end (not including end)
+func (b *Buffer) remove(start, end Loc) string { // assume now this is local remove
 	b.IsModified = true
-	sub := b.LineArray.remove(start, end) // TODO: change to b.document.remove
+	sub := b.LineArray.remove(start, end) // TODO: change to b.document.delete
+
+	startIndex := ToCharPos(start, b) + 1 // shift by one
+	endIndex := ToCharPos(end, b) + 1
+
+	// delete pairs[startIndex:endIndex], not including endIndex
+	b.Document.deleteMultiple(startIndex, endIndex)
+
 	b.Update()
 	return sub
 }

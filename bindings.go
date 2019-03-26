@@ -12,7 +12,7 @@ import (
 )
 
 var bindingsStr map[string]string
-var bindings map[Key][]func(*View, bool) bool
+var bindings map[Key][]func(*View, bool) bool // key -> function
 var mouseBindings map[Key][]func(*View, bool, *tcell.EventMouse) bool
 var helpBinding string
 var kmenuBinding string

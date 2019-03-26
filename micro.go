@@ -89,7 +89,7 @@ func LoadInput() []*Buffer {
 	var filename string
 	var input []byte
 	var err error
-	args := flag.Args()
+	args := flag.Args() // std lib
 	buffers := make([]*Buffer, 0, len(args))
 
 	if len(args) > 0 {
@@ -124,7 +124,7 @@ func LoadInput() []*Buffer {
 			input = []byte{}
 		}
 		buffers = append(buffers, NewBufferFromString(string(input), filename))
-	} else {
+	} else {// no file specified
 		// Option 3, just open an empty buffer
 		buffers = append(buffers, NewBufferFromString(string(input), filename))
 	}
@@ -579,7 +579,7 @@ func main() {
 					// to run instead of the standard HandleEvent.
 					HandleSearchEvent(event, CurView())
 				} else {
-					// Send it to the view
+					// Send it to the view (view.go)
 					CurView().HandleEvent(event)
 				}
 			}

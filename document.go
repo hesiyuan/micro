@@ -37,7 +37,9 @@ var (
 
 // New creates a new Document containing the given content and a clientID
 func NewDocument(content []string, clientID uint8) *Document {
-	d := &Document{clientID: clientID}
+	d := &Document{clientID: clientID} // local variable? stored in stack?
+	// Note that, unlike in C, it's perfectly OK to return the address of a local variable;
+	// the storage associated with the variable survives after the function returns.
 	d.insert(Start, "")
 	d.insert(End, "")
 	for _, c := range content {
@@ -121,7 +123,13 @@ func (d *Document) insert(p []Identifier, atom string) bool {
 
 // Given a position identifier, inserts a byte array to the right of the given position
 // Note that this may insert multiple bytes. And it is only local insert
+// This function is not efficient, as insertRight calls insert which uses append
+// will need to be rewritten to use only a single append
 func (d *Document) insertMultiple(p []Identifier, value []byte) bool {
+	if len(value) < 1 {
+		return false
+	}
+
 	np, success := d.InsertRight(p, string(value[0]))
 	if !success {
 		return false
@@ -145,6 +153,18 @@ func (d *Document) delete(p []Identifier) bool {
 		return false
 	}
 	d.pairs = append(d.pairs[0:i], d.pairs[i+1:]...)
+	return true
+}
+
+// Delete pairs starting at startIndex and up to endIndex
+// later will need to construct a list of position identifiers deleted to be transmitted
+func (d *Document) deleteMultiple(startIndex, endIndex int) bool {
+
+	if startIndex == 0 || endIndex == len(d.pairs)-1 { // cannot delete Start and End
+		return false
+	}
+
+	d.pairs = append(d.pairs[0:startIndex], d.pairs[endIndex:]...)
 	return true
 }
 
