@@ -68,7 +68,7 @@ var (
 	updateterm chan bool
 	closeterm  chan int
 
-	// How many redraws have happened
+	// How many redraws have happened. Why is this matter?
 	numRedraw uint
 )
 
@@ -92,10 +92,10 @@ func LoadInput() []*Buffer {
 	args := flag.Args() // std lib
 	buffers := make([]*Buffer, 0, len(args))
 
-	if len(args) > 0 {
+	if len(args) > 0 { // NOTE: the first two arguments are localIP and remoteIP for testing
 		// Option 1
-		// We go through each file and load it
-		for i := 0; i < len(args); i++ {
+		// We go through each file and load it. can load multiple files into tabs?
+		for i := 2; i < len(args); i++ { // CHANGED from 0-> 2
 			if strings.HasPrefix(args[i], "+") {
 				if strings.Contains(args[i], ":") {
 					split := strings.Split(args[i], ":")
@@ -257,7 +257,7 @@ func RedrawAll() {
 	numRedraw++
 }
 
-func LoadAll() {
+func LoadAll() { // This seems not called
 	// Find the user's configuration directory (probably $XDG_CONFIG_HOME/micro)
 	InitConfigDir()
 
@@ -269,6 +269,7 @@ func LoadAll() {
 
 	InitCommands()
 	InitBindings()
+
 
 	InitColorscheme()
 	LoadPlugins()
@@ -352,6 +353,9 @@ func main() {
 	InitCommands()  //command.go
 	InitBindings() //bindings.go
 
+	// init connection
+	InitConnections()
+	
 	// Start the screen
 	InitScreen()
 

@@ -25,7 +25,7 @@ type Identifier struct {
 // pair is a position identifier and its atom.
 type pair struct {
 	pos  []Identifier // a position is a list of identifiers
-	atom string       // this is actually a char, but stick to string for easy future extension to string-wise
+	Atom string       // this is actually a char, but stick to string for easy future extension to string-wise
 
 }
 
@@ -107,7 +107,7 @@ func (d *Document) Get(p []Identifier) (string, bool) {
 	if !exists {
 		return "", false
 	}
-	return d.pairs[i].atom, true
+	return d.pairs[i].Atom, true
 }
 
 // Insert a new pair at the position, returning success or failure (already existing
@@ -214,30 +214,30 @@ func GeneratePos(lp, rp []Identifier, site uint8) ([]Identifier, bool) {
 			p = append(p, Identifier{l.Ident, l.Site})
 			continue
 		}
-		if d := r.Ident - l.Ident; d > 1 {
+		if d := r.Ident - l.Ident; d > 1 { // there are spaces in this level
 			r := random(l.Ident, r.Ident)
 			p = append(p, Identifier{r, site})
-		} else if d == 1 {
-			if site > l.Site {
+		} else if d == 1 { // no space in this level
+			if site > l.Site { // if site is larger, TOTest:
 				p = append(p, Identifier{l.Ident, site})
 			} else if site < r.Site {
 				p = append(p, Identifier{r.Ident, site})
-			} else {
+			} else { // we now that rp[i] - lp[i] == 1 in this case, go through rest of lp to find a place to generate
 				// if lp[i+1] does not exist, then min := 0, else
 				min := uint16(0)
 				if len(lp) > i+1 {
 					min = lp[i+1].Ident // this should be lp[i+1].Ident
 				} // TODO: edge case need to check if min = max - 1
-				if len(lp) > len(rp) {
+				if len(lp) > len(rp) { // long lp, hard case
 					min = lp[len(rp)].Ident
 					// Super edge case
 					// left  => {3 1} {65534 1}
-					// right => {4 1}
+					// right => {4 1}. some optimization can be made here, but stick it for now
 					// In this case, 65534 can't be min, because no number is in between
 					// it and MAX. So need to extend the positions further.
-					if min == ^uint16(0)-1 {
+					if min == ^uint16(0)-1 { // maxium is 65535, no space in lp's last level
 						r := random(0, ^uint16(0))
-						p = append(p, Identifier{l.Ident, l.Site})
+						p = append(p, Identifier{l.Ident, l.Site}) // append previous
 						p = append(p, lp[len(rp):]...)
 						p = append(p, Identifier{r, site})
 						return p, true
@@ -256,7 +256,7 @@ func GeneratePos(lp, rp []Identifier, site uint8) ([]Identifier, bool) {
 		}
 		return p, true
 	}
-	if len(rp) > len(lp) {
+	if len(rp) > len(lp) { // easy case, make a random integer in new level
 		r := random(0, rp[len(lp)].Ident)
 		p = append(p, Identifier{r, site})
 	}
@@ -329,7 +329,7 @@ func (d *Document) DeleteRight(p []Identifier) bool {
 func (d *Document) Content() string {
 	var b bytes.Buffer
 	for i := 1; i < len(d.pairs)-1; i++ {
-		b.WriteString(d.pairs[i].atom)
+		b.WriteString(d.pairs[i].Atom)
 	}
 	return b.String()
 }
