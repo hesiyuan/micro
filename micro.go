@@ -233,7 +233,7 @@ func InitScreen() {
 // RedrawAll redraws everything -- all the views and the messenger
 func RedrawAll() {
 	messenger.Clear()
-
+	// clear the screen first
 	w, h := screen.Size()
 	for x := 0; x < w; x++ {
 		for y := 0; y < h; y++ {
@@ -252,7 +252,7 @@ func RedrawAll() {
 	screen.Show() // make the SetContent call visible
 
 	if numRedraw%50 == 0 {
-		runtime.GC()
+		runtime.GC() // runtime garbage collection
 	}
 	numRedraw++
 }

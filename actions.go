@@ -1001,7 +1001,7 @@ func (v *View) saveToFile(filename string) {
 					messenger.Error(err.Error())
 				} else {
 					v.Buf.Path = filename
-					v.Buf.name = filename
+					v.Buf.name = filename // buffer name set to filename
 					messenger.Message("Saved " + filename)
 				}
 			}

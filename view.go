@@ -778,7 +778,7 @@ func (v *View) openHelp(helpPage string) {
 		TermMessage("Unable to load help text", helpPage, "\n", err)
 	} else {
 		helpBuffer := NewBufferFromString(string(data), helpPage+".md")
-		helpBuffer.name = "Help"
+		helpBuffer.name = "Help" // set buffer name to "Help"
 
 		if v.Type == vtHelp {
 			v.OpenBuffer(helpBuffer)

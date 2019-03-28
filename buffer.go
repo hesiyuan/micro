@@ -695,31 +695,41 @@ func (b *Buffer) Modified() bool {
 	return buff != b.origHash
 }
 
-// assume for now this is local insert
+// This insert is also used by commands insert, messager log insert etc
 func (b *Buffer) insert(pos Loc, value []byte) {
+	// LOCAL
 	b.IsModified = true
 	b.LineArray.insert(pos, value) // TODO: change to b.document.insert
+
+	b.Update()
+
+	if b.name == "Log" || b.name == "Help" { // private domains
+		return
+	}
+
+	// START is at index 0, may be off a little.
 	// given pos, and a byte array (usually just one byte), insert sequentially to CRDT
 	// first converts pos into CRDT document index. The index is the would-be inserted index
 	index := ToCharPos(pos, b) // may need to be called before linearray insert
-	// START is at index 0, may be off a little.
 	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value)
-	b.Update()
+	//fmt.Printf(b.name)
 
+	// REMOTE. This can also be wrapped into a function in connection.go
 	if len(peerServices) < 1 { // checking connection
 		return
 	}
 	// now send to peers
 	InsertArgs := InsertArgs{
-		Clientid: 1,
-		Clock:    123,
+		Clientid: 1,   // TODO
+		Clock:    123, // TODO
 		Pair: pair{
 			Pos:  posIdentifier,
 			Atom: string(value),
 		},
 	}
 	var kvVal ValReply
-	peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal) // rpc
+	// currently only one peer. This is blocking, in production, may need to timeout TODO:
+	go func() { peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal) }() // rpc
 
 }
 

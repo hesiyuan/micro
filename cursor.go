@@ -10,7 +10,7 @@ import (
 // uses a rope to store text, to insert text we must have an index. It
 // is also simpler to use character indicies for other tasks such as
 // selection.
-type Cursor struct {
+type Cursor struct { // construct a cursor for each peer later TODO:
 	buf *Buffer
 	Loc
 
@@ -255,6 +255,7 @@ func (c *Cursor) RuneUnder(x int) rune {
 	}
 	return line[x]
 }
+
 // UpN moves the cursor up N lines (if possible)
 func (c *Cursor) UpN(amount int) {
 	proposedY := c.Y - amount

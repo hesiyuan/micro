@@ -51,6 +51,11 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// decompose InsertArgs
 	posIdentifier := args.Pair.Pos
 	atom := []byte(args.Pair.Atom)
+
+	if string(atom) == "" || len(posIdentifier) == 0 {
+		return nil
+	}
+
 	buf := CurView().Buf // buffer pointer, supports one tab currently
 	// the CRDTIndex is the index for the atom to be inserted in the document
 	CRDTIndex, _ := buf.Document.Index(posIdentifier)
@@ -63,15 +68,11 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// now insert to document
 	buf.Document.insert(posIdentifier, args.Pair.Atom)
 
-	//testing
-	//fmt.Printf(args.Pair.Atom)
-	//fmt.Println("remote insert")
 	// update numoflines in lineArray
 	buf.Update()
 
-	CurView().Display() // update current tab
-	screen.Show()       // commit
-
+	RedrawAll()
+	// clear the current tab
 	return nil
 }
 
@@ -127,36 +128,6 @@ func InitConnections() {
 		checkError(err)
 	}
 
-	// some testing code below
-	// var kvVal ValReply
-	// InsertArgs := InsertArgs{
-	// 	Clientid: 1,
-	// 	Clock:    123,
-	// 	Pair: pair{
-	// 		Pos: []Identifier{{13627, 1},
-	// 			{65036, 1},
-	// 			{24224, 1}},
-	// 		Atom: "$",
-	// 	},
-	// }
-
-	// ticker := time.NewTicker(10 * time.Second) // send in 10s
-	// quit := make(chan bool)
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case <-ticker.C:
-	// 			val := peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal)
-	// 			checkError(val)
-	// 			quit <- true // only send the above once and quit
-	// 		case <-quit:
-	// 			ticker.Stop()
-	// 			close(quit)
-	// 			return
-	// 		}
-	// 	}
-	// }()
-
 	// this can also reside in the micro.go
 	go func() {
 		for {
@@ -172,6 +143,6 @@ func checkError(err error) {
 	if err != nil {
 		//fmt.Fprintf(os.Stderr, "MyError: ", err.Error())
 		fmt.Println("Error", err.Error())
-		os.Exit(1) // Let's do not exit, when in production
+		//os.Exit(1) // Let's do not exit, when in production
 	}
 }

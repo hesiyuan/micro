@@ -159,7 +159,7 @@ func (la *LineArray) insert(pos Loc, value []byte) {
 	// x, y := pos.x, pos.y
 	for i := 0; i < len(value); i++ { // go through each byte in value[]
 		if value[i] == '\n' { // if user enters a return, then split
-			la.Split(Loc{x, y}) // this is the underlying split mechanism for lines
+			la.Split(Loc{x, y}) // this is the underlying split mechanism for lines. calls insert
 			x = 0
 			y++
 			continue
@@ -192,7 +192,7 @@ func (la *LineArray) Split(pos Loc) {
 	la.lines[pos.Y].match = nil
 	la.lines[pos.Y+1].match = nil
 	la.lines[pos.Y].rehighlight = true
-	la.DeleteToEnd(Loc{pos.X, pos.Y}) // not sure why do this?
+	la.DeleteToEnd(Loc{pos.X, pos.Y}) // delete the characters on the righthand of the "\n" split
 }
 
 // removes from start to end, also forms the deleted substring
