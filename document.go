@@ -24,7 +24,7 @@ type Identifier struct {
 
 // pair is a position identifier and its atom.
 type pair struct {
-	pos  []Identifier // a position is a list of identifiers
+	Pos  []Identifier // a position is a list of identifiers
 	Atom string       // this is actually a char, but stick to string for easy future extension to string-wise
 
 }
@@ -64,7 +64,7 @@ func (d *Document) Index(p []Identifier) (int, bool) {
 		}
 		spt := len(pr) / 2 // binary search
 		pair := pr[spt]
-		if cmp := ComparePos(pair.pos, p); cmp == 0 {
+		if cmp := ComparePos(pair.Pos, p); cmp == 0 {
 			return spt + off, true
 		} else if cmp == -1 {
 			off += spt + 1
@@ -117,7 +117,7 @@ func (d *Document) insert(p []Identifier, atom string) bool {
 	if exists {
 		return false
 	}
-	// this is harmful for rach condition
+	// this is harmful for rach condition; insert at position i
 	d.pairs = append(d.pairs[0:i], append([]pair{{p, atom}}, d.pairs[i:]...)...)
 	return true
 }
@@ -126,25 +126,27 @@ func (d *Document) insert(p []Identifier, atom string) bool {
 // Note that this may insert multiple bytes. And it is only local insert
 // This function is not efficient, as insertRight calls insert which uses append
 // will need to be rewritten to use only a single append
-func (d *Document) insertMultiple(p []Identifier, value []byte) bool {
+// RETURN: the pos identifier of the last inserted byte in the byte sequence
+func (d *Document) insertMultiple(p []Identifier, value []byte) ([]Identifier, bool) {
 	if len(value) < 1 {
-		return false
+		return nil, false
 	}
 
 	np, success := d.InsertRight(p, string(value[0]))
 	if !success {
-		return false
+		return nil, false
 	}
 	// CRDT treats every character as the same, no need to split on return
+	// at this time, the following for loop won't be executed
 	for i := 1; i < len(value); i++ { // go through each byte in value[]
 		// notice that the 1st argument to InsertRight is now updated np
 		np, success = d.InsertRight(np, string(value[i]))
 		if !success {
-			return false
+			return nil, false
 		}
 	}
 
-	return true
+	return np, true
 }
 
 // Delete the pair at the position, returning success or failure (non-existent position).
@@ -178,7 +180,7 @@ func (d *Document) Left(p []Identifier) ([]Identifier, bool) {
 	if !exists || i == 0 {
 		return nil, false
 	}
-	return d.pairs[i-1].pos, true
+	return d.pairs[i-1].Pos, true
 }
 
 // Right returns the position to the right of the given position, and a flag indicating
@@ -190,7 +192,7 @@ func (d *Document) Right(p []Identifier) ([]Identifier, bool) {
 	if !exists || i >= len(d.pairs)-1 {
 		return nil, false
 	}
-	return d.pairs[i+1].pos, true
+	return d.pairs[i+1].Pos, true
 }
 
 // random number between x and y, where y is greater than x.

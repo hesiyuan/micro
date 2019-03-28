@@ -388,7 +388,7 @@ func (b *Buffer) ReOpen() {
 }
 
 // Update fetches the string from the rope and updates the `text` and `lines` in the buffer
-func (b *Buffer) Update() {
+func (b *Buffer) Update() { //?? it only set numLines
 	b.NumLines = len(b.lines)
 }
 
@@ -703,8 +703,24 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// first converts pos into CRDT document index. The index is the would-be inserted index
 	index := ToCharPos(pos, b) // may need to be called before linearray insert
 	// START is at index 0, may be off a little.
-	b.Document.insertMultiple(b.Document.pairs[index].pos, value)
+	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value)
 	b.Update()
+
+	if len(peerServices) < 1 { // checking connection
+		return
+	}
+	// now send to peers
+	InsertArgs := InsertArgs{
+		Clientid: 1,
+		Clock:    123,
+		Pair: pair{
+			Pos:  posIdentifier,
+			Atom: string(value),
+		},
+	}
+	var kvVal ValReply
+	peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal) // rpc
+
 }
 
 // remove from start up to end (not including end)

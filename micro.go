@@ -237,19 +237,19 @@ func RedrawAll() {
 	w, h := screen.Size()
 	for x := 0; x < w; x++ {
 		for y := 0; y < h; y++ {
-			screen.SetContent(x, y, ' ', nil, defStyle)
+			screen.SetContent(x, y, ' ', nil, defStyle) // set all empty?
 		}
 	}
 
-	for _, v := range tabs[curTab].Views {
+	for _, v := range tabs[curTab].Views { // draw all meat in each view
 		v.Display()
 	}
-	DisplayTabs()
+	DisplayTabs() // display all tabs if we have multiple
 	messenger.Display()
 	if globalSettings["keymenu"].(bool) {
 		DisplayKeyMenu()
 	}
-	screen.Show()
+	screen.Show() // make the SetContent call visible
 
 	if numRedraw%50 == 0 {
 		runtime.GC()

@@ -209,7 +209,7 @@ func (v *View) paste(clip string) {
 		v.Cursor.DeleteSelection()
 		v.Cursor.ResetSelection()
 	}
-	
+
 	v.Buf.Insert(v.Cursor.Loc, clip)
 	// v.Cursor.Loc = v.Cursor.Loc.Move(Count(clip), v.Buf)
 	v.freshClip = false
@@ -514,7 +514,7 @@ func (v *View) ExecuteActions(actions []func(*View, bool) bool) bool {
 	readonlyBindingsList := []string{"Delete", "Insert", "Backspace", "Cut", "Play", "Paste", "Move", "Add", "DuplicateLine", "Macro"}
 	for _, action := range actions {
 		readonlyBindingsResult := false
-		funcName := ShortFuncName(action) // get function name 
+		funcName := ShortFuncName(action) // get function name
 		curv := CurView()
 		if curv.Type.Readonly == true {
 			// check for readonly and if true only let key bindings get called if they do not change the contents.
@@ -789,7 +789,8 @@ func (v *View) openHelp(helpPage string) {
 	}
 }
 
-// DisplayView draws the view to the screen
+// DisplayView draws the view to the screen.
+// This is the function draw actual text
 func (v *View) DisplayView() {
 	if v.Type == vtTerm {
 		v.term.Display()
@@ -961,7 +962,7 @@ func (v *View) DisplayView() {
 
 		var lastChar *Char
 		cursorSet := false
-		for _, char := range line {
+		for _, char := range line { // draw chars in each line
 			if char != nil {
 				lineStyle := char.style
 

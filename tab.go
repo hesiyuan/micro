@@ -176,6 +176,7 @@ func TabbarHandleMouseEvent(event tcell.Event) bool {
 }
 
 // DisplayTabs displays the tabbar at the top of the editor if there are multiple tabs
+// can be utilized later
 func DisplayTabs() {
 	if len(tabs) <= 1 {
 		return

@@ -1,6 +1,7 @@
 package main
 
-// FromCharPos converts from a character position to an x, y position
+// FromCharPos converts from a character position to an x, y position.
+// Currently, not super-efficient
 func FromCharPos(loc int, buf *Buffer) Loc {
 	charNum := 0
 	x, y := 0, 0

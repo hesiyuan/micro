@@ -150,7 +150,7 @@ func (la *LineArray) SaveString(useCrlf bool) string {
 func (la *LineArray) NewlineBelow(y int) {
 	la.lines = append(la.lines, Line{[]byte{' '}, nil, nil, false}) // append one line, why ' '?
 	copy(la.lines[y+2:], la.lines[y+1:])                            // shifting lines under
-	la.lines[y+1] = Line{[]byte{}, la.lines[y].state, nil, false}   // ' ' disappeared.. 
+	la.lines[y+1] = Line{[]byte{}, la.lines[y].state, nil, false}   // ' ' disappeared..
 }
 
 // inserts a byte array at a given location
@@ -171,8 +171,9 @@ func (la *LineArray) insert(pos Loc, value []byte) {
 
 // inserts a byte at a given location, super-relavant
 func (la *LineArray) insertByte(pos Loc, value byte) {
-	la.lines[pos.Y].data = append(la.lines[pos.Y].data, 0)
-	copy(la.lines[pos.Y].data[pos.X+1:], la.lines[pos.Y].data[pos.X:])
+	la.lines[pos.Y].data = append(la.lines[pos.Y].data, 0) // appends an extra 0 at the end
+	// shifting the chars on the right of value by 1 right
+	copy(la.lines[pos.Y].data[pos.X+1:], la.lines[pos.Y].data[pos.X:]) // func copy(dst, src []Type) int
 	la.lines[pos.Y].data[pos.X] = value
 }
 

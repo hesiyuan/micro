@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/rpc"
 	"os"
-	"time"
 )
 
 // args in insert(args)
@@ -47,13 +46,31 @@ var peerAddresses []string
 // a slice hoding rpc service of peers
 var peerServices []*rpc.Client
 
-// a insert char message from a peer
+// a insert char message from a peer.
 func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
-	// TODO
+	// decompose InsertArgs
+	posIdentifier := args.Pair.Pos
+	atom := []byte(args.Pair.Atom)
+	buf := CurView().Buf // buffer pointer, supports one tab currently
+	// the CRDTIndex is the index for the atom to be inserted in the document
+	CRDTIndex, _ := buf.Document.Index(posIdentifier)
+	// converting CRDTIndex to lineArray pos
+	LinePos := FromCharPos(CRDTIndex-1, buf) // off by 1
+	// This directly insert to document and lineArray directly bypassing the eventsQueue
+	// Let's insert to lineArray first
+	buf.LineArray.insert(LinePos, atom)
+
+	// now insert to document
+	buf.Document.insert(posIdentifier, args.Pair.Atom)
 
 	//testing
-	fmt.Printf(args.Pair.Atom)
+	//fmt.Printf(args.Pair.Atom)
 	//fmt.Println("remote insert")
+	// update numoflines in lineArray
+	buf.Update()
+
+	CurView().Display() // update current tab
+	screen.Show()       // commit
 
 	return nil
 }
@@ -101,7 +118,7 @@ func InitConnections() {
 
 	// then dial
 	peerAddresses = make([]string, 1)
-	peerServices := make([]*rpc.Client, 1)
+	peerServices = make([]*rpc.Client, 1) // must use "="" to assign global variables
 	for i := range peerAddresses {
 		peerAddresses[i] = args[i+1]
 		// Connect to other peers via RPC.
@@ -111,34 +128,34 @@ func InitConnections() {
 	}
 
 	// some testing code below
-	var kvVal ValReply
-	InsertArgs := InsertArgs{
-		Clientid: 1,
-		Clock:    123,
-		Pair: pair{
-			pos: []Identifier{{13627, 1},
-				{65036, 1},
-				{24224, 1}},
-			Atom: "$",
-		},
-	}
+	// var kvVal ValReply
+	// InsertArgs := InsertArgs{
+	// 	Clientid: 1,
+	// 	Clock:    123,
+	// 	Pair: pair{
+	// 		Pos: []Identifier{{13627, 1},
+	// 			{65036, 1},
+	// 			{24224, 1}},
+	// 		Atom: "$",
+	// 	},
+	// }
 
-	ticker := time.NewTicker(10 * time.Second) // send in 10s
-	quit := make(chan bool)
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				val := peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal)
-				checkError(val)
-				quit <- true // only send the above once and quit
-			case <-quit:
-				ticker.Stop()
-				close(quit)
-				return
-			}
-		}
-	}()
+	// ticker := time.NewTicker(10 * time.Second) // send in 10s
+	// quit := make(chan bool)
+	// go func() {
+	// 	for {
+	// 		select {
+	// 		case <-ticker.C:
+	// 			val := peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal)
+	// 			checkError(val)
+	// 			quit <- true // only send the above once and quit
+	// 		case <-quit:
+	// 			ticker.Stop()
+	// 			close(quit)
+	// 			return
+	// 		}
+	// 	}
+	// }()
 
 	// this can also reside in the micro.go
 	go func() {
@@ -155,6 +172,6 @@ func checkError(err error) {
 	if err != nil {
 		//fmt.Fprintf(os.Stderr, "MyError: ", err.Error())
 		fmt.Println("Error", err.Error())
-		//os.Exit(1). Let's do not exit
+		os.Exit(1) // Let's do not exit, when in production
 	}
 }
