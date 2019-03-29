@@ -76,10 +76,32 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	return nil
 }
 
-// a delete char message from a peer
+// a delete char message from a peer. Note: this is to delete only a single char
 func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
-	// TODO
+	posIdentifier := args.Pair.Pos
+	atom := []byte(args.Pair.Atom)
 
+	if string(atom) == "" || len(posIdentifier) == 0 {
+		return nil
+	}
+
+	buf := CurView().Buf // buffer pointer, supports one tab currently
+	// the CRDTIndex is the index for the atom to be deleted in the document
+	CRDTIndex, _ := buf.Document.Index(posIdentifier)
+
+	// converting CRDTIndex to lineArray pos
+	LinePos := FromCharPos(CRDTIndex-1, buf) // CRDT_index is one index higher
+	// This directly delet to document and lineArray directly bypassing the eventsQueue
+	buf.LineArray.remove(LinePos, LinePos.right(buf)) // removing one char at LinePos
+
+	// given position identifier, delete directly
+	buf.Document.delete(posIdentifier)
+
+	// update numoflines in lineArray
+	buf.Update()
+
+	RedrawAll()
+	// clear the current tab
 	return nil
 }
 

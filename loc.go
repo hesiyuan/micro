@@ -130,11 +130,11 @@ func (l Loc) LessEqual(b Loc) bool {
 
 // This moves the location one character to the right
 func (l Loc) right(buf *Buffer) Loc {
-	if l == buf.End() {
-		return Loc{l.X + 1, l.Y}
+	if l == buf.End() { // if it is the last char in the buffer
+		return Loc{l.X + 1, l.Y} // return the would-be right char
 	}
 	var res Loc
-	if l.X < Count(buf.Line(l.Y)) {
+	if l.X < Count(buf.Line(l.Y)) { // if
 		res = Loc{l.X + 1, l.Y}
 	} else {
 		res = Loc{0, l.Y + 1}

@@ -55,7 +55,7 @@ func sliceStart(slc []byte, index int) []byte {
 
 	return slc[totalSize:]
 }
-
+// what's this??
 func sliceEnd(slc []byte, index int) []byte {
 	len := len(slc)
 	i := 0

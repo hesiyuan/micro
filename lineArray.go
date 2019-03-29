@@ -202,7 +202,7 @@ func (la *LineArray) remove(start, end Loc) string { // may also need to support
 	endX := runeToByteIndex(end.X, la.lines[end.Y].data)
 	if start.Y == end.Y { // if a line is deleted in the middle, merge the gap
 		la.lines[start.Y].data = append(la.lines[start.Y].data[:startX], la.lines[start.Y].data[endX:]...)
-	} else {
+	} else { // the deleted region acrosses two lines, merge the two lines
 		for i := start.Y + 1; i <= end.Y-1; i++ {
 			la.DeleteLine(start.Y + 1)
 		}
@@ -229,7 +229,7 @@ func (la *LineArray) DeleteLine(y int) {
 }
 
 // DeleteByte deletes the byte at a position
-func (la *LineArray) DeleteByte(pos Loc) {
+func (la *LineArray) DeleteByte(pos Loc) { // This does not take into account of line changes
 	la.lines[pos.Y].data = la.lines[pos.Y].data[:pos.X+copy(la.lines[pos.Y].data[pos.X:], la.lines[pos.Y].data[pos.X+1:])]
 }
 

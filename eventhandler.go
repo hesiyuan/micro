@@ -43,7 +43,7 @@ func ExecuteTextEvent(t *TextEvent, buf *Buffer) {
 		}
 	} else if t.EventType == TextEventRemove {
 		for i, d := range t.Deltas {
-			t.Deltas[i].Text = buf.remove(d.Start, d.End)
+			t.Deltas[i].Text = buf.remove(d.Start, d.End) // remove
 		}
 	} else if t.EventType == TextEventReplace {
 		for i, d := range t.Deltas {
@@ -105,7 +105,7 @@ func (eh *EventHandler) Insert(start Loc, text string) {
 	e := &TextEvent{
 		C:         *eh.buf.cursors[eh.buf.curCursor],
 		EventType: TextEventInsert,
-		Deltas:    []Delta{{text, start, Loc{0, 0}}},
+		Deltas:    []Delta{{text, start, Loc{0, 0}}}, // why end {0, 0}?
 		Time:      time.Now(),
 	}
 	eh.Execute(e)

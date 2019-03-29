@@ -715,7 +715,7 @@ func (v *View) InsertNewline(usePlugin bool) bool {
 
 		// Remove the whitespaces if keepautoindent setting is off
 		if IsSpacesOrTabs(v.Buf.Line(v.Cursor.Y-1)) && !v.Buf.Settings["keepautoindent"].(bool) {
-			line := v.Buf.Line(v.Cursor.Y - 1)
+			line := v.Buf.Line(v.Cursor.Y - 1) // if line is empty, start and end will be the same
 			v.Buf.Remove(Loc{0, v.Cursor.Y - 1}, Loc{Count(line), v.Cursor.Y - 1})
 		}
 	}
@@ -737,7 +737,7 @@ func (v *View) Backspace(usePlugin bool) bool {
 	if v.Cursor.HasSelection() {
 		v.Cursor.DeleteSelection()
 		v.Cursor.ResetSelection()
-	} else if v.Cursor.Loc.GreaterThan(v.Buf.Start()) {
+	} else if v.Cursor.Loc.GreaterThan(v.Buf.Start()) { // > Loc{0, 0}
 		// We have to do something a bit hacky here because we want to
 		// delete the line by first moving left and then deleting backwards
 		// but the undo redo would place the cursor in the wrong place
@@ -748,13 +748,13 @@ func (v *View) Backspace(usePlugin bool) bool {
 		// whitespace at the start of the line, we should delete as if it's a
 		// tab (tabSize number of spaces)
 		lineStart := sliceEnd(v.Buf.LineBytes(v.Cursor.Y), v.Cursor.X)
-		tabSize := int(v.Buf.Settings["tabsize"].(float64))
+		tabSize := int(v.Buf.Settings["tabsize"].(float64)) // 4, trickly here
 		if v.Buf.Settings["tabstospaces"].(bool) && IsSpaces(lineStart) && utf8.RuneCount(lineStart) != 0 && utf8.RuneCount(lineStart)%tabSize == 0 {
 			loc := v.Cursor.Loc
-			v.Buf.Remove(loc.Move(-tabSize, v.Buf), loc) // remove event
+			v.Buf.Remove(loc.Move(-tabSize, v.Buf), loc) // remove event, note that delete four chars
 		} else {
-			loc := v.Cursor.Loc
-			v.Buf.Remove(loc.Move(-1, v.Buf), loc)
+			loc := v.Cursor.Loc 
+			v.Buf.Remove(loc.Move(-1, v.Buf), loc) // move left one step
 		}
 	}
 	v.Cursor.LastVisualX = v.Cursor.GetVisualX()

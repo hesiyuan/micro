@@ -697,13 +697,17 @@ func (b *Buffer) Modified() bool {
 
 // This insert is also used by commands insert, messager log insert etc
 func (b *Buffer) insert(pos Loc, value []byte) {
+
+	if len(value) == 0 { // need to check when (stacktrace) such a scenario happens
+		return
+	}
 	// LOCAL
-	b.IsModified = true
+	b.IsModified = true            // where it is set to false ?
 	b.LineArray.insert(pos, value) // TODO: change to b.document.insert
 
 	b.Update()
 
-	if b.name == "Log" || b.name == "Help" { // private domains
+	if b.name == "Log" || b.name == "Help" { // private domains, don't bother CRDTize data
 		return
 	}
 
@@ -712,7 +716,7 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// first converts pos into CRDT document index. The index is the would-be inserted index
 	index := ToCharPos(pos, b) // may need to be called before linearray insert
 	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value)
-	//fmt.Printf(b.name)
+	// insertMultiple is necessary as user can delete a text region indicated by a cursor range
 
 	// REMOTE. This can also be wrapped into a function in connection.go
 	if len(peerServices) < 1 { // checking connection
@@ -733,20 +737,53 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 
 }
 
-// remove from start up to end (not including end)
-func (b *Buffer) remove(start, end Loc) string { // assume now this is local remove
-	b.IsModified = true
-	sub := b.LineArray.remove(start, end) // TODO: change to b.document.delete
+// remove from start up to end (not including end). This is used by many other files
+func (b *Buffer) remove(start, end Loc) string {
+	// start == end -> we are not deleting, should disallow this case
+	if start.X == end.X && start.Y == end.Y {
+		return ""
+	}
 
+	b.IsModified = true
+
+	// compute CRDT indices before lineArray removal!!
 	startIndex := ToCharPos(start, b) + 1 // shift by one
 	endIndex := ToCharPos(end, b) + 1
 
-	// delete pairs[startIndex:endIndex], not including endIndex
-	b.Document.deleteMultiple(startIndex, endIndex)
+	value := b.LineArray.remove(start, end) // TODO: change to b.document.delete
 
 	b.Update()
-	return sub
+
+	if b.name == "Log" || b.name == "Help" { // private domains
+		return value
+	}
+
+	// delete pairs[startIndex:endIndex], not including endIndex
+	posIdentifier := b.Document.deleteMultiple(startIndex, endIndex)
+	// REMOTE. This can also be wrapped into a function in connection.go
+	// Currently, the following code assumes deleting just one char.
+
+	if len(peerServices) < 1 { // checking connection
+		return value
+	}
+	// now send to peers
+	DeleteArgs := DeleteArgs{
+		Clientid: 1,   // TODO
+		Clock:    123, // TODO
+		Pair: pair{
+			Pos:  posIdentifier,
+			Atom: string(value),
+		},
+	}
+	var kvVal ValReply
+	// currently only one peer. This is blocking, in production, may need to timeout TODO:
+	// later need to extent to loops
+	go func() { peerServices[0].Call("EntangleClient.Delete", DeleteArgs, &kvVal) }() // rpc
+
+	return value
 }
+
+// where is this function called?
 func (b *Buffer) deleteToEnd(start Loc) {
 	b.IsModified = true
 	b.LineArray.DeleteToEnd(start) // TODO: change to b.document.remove
@@ -772,7 +809,7 @@ func (b *Buffer) RuneAt(loc Loc) rune {
 	return '\n'
 }
 
-// LineBytes returns a single line as an array of runes
+// LineBytes returns a single line as an array of bytes
 func (b *Buffer) LineBytes(n int) []byte {
 	if n >= len(b.lines) {
 		return []byte{}

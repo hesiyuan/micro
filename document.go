@@ -160,15 +160,21 @@ func (d *Document) delete(p []Identifier) bool {
 }
 
 // Delete pairs starting at startIndex and up to endIndex
+// concurrently returns the position identifier of the first deleted char
 // later will need to construct a list of position identifiers deleted to be transmitted
-func (d *Document) deleteMultiple(startIndex, endIndex int) bool {
+func (d *Document) deleteMultiple(startIndex, endIndex int) []Identifier {
 
-	if startIndex == 0 || endIndex == len(d.pairs)-1 { // cannot delete Start and End
-		return false
+	if startIndex == 0 || endIndex == len(d.pairs)+1 { // cannot delete Start and End
+		return nil
 	}
 
-	d.pairs = append(d.pairs[0:startIndex], d.pairs[endIndex:]...)
-	return true
+	if startIndex == endIndex { // endIndex must be at least on higher than startIndex
+		return nil
+	}
+
+	i := d.pairs[startIndex].Pos
+	d.pairs = append(d.pairs[0:startIndex], d.pairs[endIndex:]...) // eplisis unpacks the second slice
+	return i
 }
 
 // Left returns the position to the left of the given position, and a flag indicating
