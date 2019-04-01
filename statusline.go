@@ -39,17 +39,30 @@ func (sline *Statusline) Display() {
 	columnNum := strconv.Itoa(sline.view.Cursor.GetVisualX() + 1)
 	lineNum := strconv.Itoa(sline.view.Cursor.Y + 1)
 
-	file += " (" + lineNum + "," + columnNum + ")"
+	file += " (" + lineNum + "," + columnNum + ")" // cursor (x, y)
+
+	// show online and offline now based on available connections.
+	// here, we will use peerServices, but later will need to have a table of reachable peers
+	// current peerServices cannot indicate offline when other peers quit.
+
+	connectionStatus := ""
+	// currently only one peer
+	if peerServices[0] != nil {
+		connectionStatus = "online"
+	} else {
+		connectionStatus = "offline"
+	}
+
+	file += " " + connectionStatus
 
 	// Add the filetype
-	file += " " + sline.view.Buf.FileType()
-
-	file += " " + sline.view.Buf.Settings["fileformat"].(string)
+	//file += " " + sline.view.Buf.FileType() // this returns "unknown"
+	//file += " " + sline.view.Buf.Settings["fileformat"].(string) // "unix"
 
 	rightText := ""
 	if !sline.view.Buf.Settings["hidehelp"].(bool) {
 		if len(kmenuBinding) > 0 {
-			if globalSettings["keymenu"].(bool) {
+			if globalSettings["keymenu"].(bool) { // this can be toggled in actions.go
 				rightText += kmenuBinding + ": hide bindings"
 			} else {
 				rightText += kmenuBinding + ": show bindings"

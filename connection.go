@@ -25,6 +25,11 @@ type DeleteArgs struct {
 }
 
 // args in disconnect(args)
+type ConnectArgs struct { // later need to have more fields
+	Clientid uint8 // client id who asks to connection
+}
+
+// args in disconnect(args)
 type DisconnectArgs struct {
 	Clientid uint8 // client id who voluntarilly quit the editor
 }
@@ -105,9 +110,22 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 	return nil
 }
 
+// CONNECT to a peer.
+func (ec *EntangleClient) Connect(args *ConnectArgs, reply *ValReply) error {
+	// This set the global slice peerServices
+	// currently only one peer
+	peerServices[0], _ = rpc.Dial("tcp", peerAddresses[0])
+
+	// redraw the status line, the above may fail as well
+	RedrawAll()
+	//CurView().sline.Display() does not refresh
+
+	return nil
+}
+
 // DISCONNECT from a peer.
 func (ec *EntangleClient) Disconnect(args *DisconnectArgs, reply *ValReply) error {
-	// TODO
+	//TODO
 
 	return nil
 }
@@ -147,7 +165,7 @@ func InitConnections() {
 		// Connect to other peers via RPC.
 		peerServices[i], err = rpc.Dial("tcp", peerAddresses[i]) // can dial periodically
 		// based on the err, do not have to quit in checkError
-		checkError(err)
+		checkErrorAndConnect(err)
 	}
 
 	// this can also reside in the micro.go
@@ -160,11 +178,30 @@ func InitConnections() {
 
 }
 
+// // check
+// func checkError (err error) {
+
+
+
+// }
+
+
 // If error is non-nil, print it out and halt.
-func checkError(err error) {
+// This function is augmented with a RPC call to connect, the remote peer
+// will be requested to dial to this client as well, if no err.
+func checkErrorAndConnect(err error) {
 	if err != nil {
 		//fmt.Fprintf(os.Stderr, "MyError: ", err.Error())
 		fmt.Println("Error", err.Error())
 		//os.Exit(1) // Let's do not exit, when in production
+	} else { // if no error, RPC connect
+		// now send to peers
+		ConnectArgs := ConnectArgs{
+			Clientid: 1, // TODO
+		}
+		var kvVal ValReply
+		// asynchronously, does not matter if synchronous
+		go func() { peerServices[0].Call("EntangleClient.Connect", ConnectArgs, &kvVal) }()
+
 	}
 }

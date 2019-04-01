@@ -719,7 +719,7 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// insertMultiple is necessary as user can delete a text region indicated by a cursor range
 
 	// REMOTE. This can also be wrapped into a function in connection.go
-	if len(peerServices) < 1 { // checking connection
+	if peerServices[0] == nil { // checking connection
 		return
 	}
 	// now send to peers
@@ -733,7 +733,21 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	}
 	var kvVal ValReply
 	// currently only one peer. This is blocking, in production, may need to timeout TODO:
-	go func() { peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal) }() // rpc
+	go func() {
+		c := make(chan error, 1) // not really necessary
+		select {                 // select blocks until one of the following cases is able to run
+		case c <- peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal):
+			// use err and reply
+			v := <-c
+			if v != nil { // for whatever reason, there is an error
+				peerServices[0] = nil // set to nil naively and immediately
+			}
+		case <-time.After(5 * time.Second): // receive from time.After channel
+			// call timed out, setting peerServices[0] to nil for now
+			peerServices[0] = nil
+		}
+
+	}() // rpc
 
 }
 

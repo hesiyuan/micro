@@ -753,7 +753,7 @@ func (v *View) Backspace(usePlugin bool) bool {
 			loc := v.Cursor.Loc
 			v.Buf.Remove(loc.Move(-tabSize, v.Buf), loc) // remove event, note that delete four chars
 		} else {
-			loc := v.Cursor.Loc 
+			loc := v.Cursor.Loc
 			v.Buf.Remove(loc.Move(-1, v.Buf), loc) // move left one step
 		}
 	}
@@ -1749,7 +1749,7 @@ func (v *View) ToggleKeyMenu(usePlugin bool) bool {
 		if usePlugin && !PreActionCall("ToggleBindings", v) {
 			return false
 		}
-
+		// toggle "show bindings" to "hide bindings" vice versa
 		globalSettings["keymenu"] = !globalSettings["keymenu"].(bool)
 		for _, tab := range tabs {
 			tab.Resize()
