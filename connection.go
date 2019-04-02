@@ -2,6 +2,7 @@ package main
 
 // This is the connection code with other peers for now.
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -14,24 +15,31 @@ import (
 type InsertArgs struct {
 	Pair     pair   // pair as defined in document.go
 	Clock    uint64 // value of logical clock at the issuing client
-	Clientid uint8
+	Clientid string // ip:port
 }
 
 // args in put(args)
 type DeleteArgs struct {
 	Pair     pair   // pair as defined in document.go
 	Clock    uint64 // value of logical clock at the issuing client
-	Clientid uint8
+	Clientid string // ip:port
 }
 
 // args in disconnect(args)
 type ConnectArgs struct { // later need to have more fields
-	Clientid uint8 // client id who asks to connection
+	Clientid string // client id who asks to connection
+}
+
+//SyncPhaseOneArgs
+type SyncPhaseOneArgs struct {
+	Clientid      string // requester
+	SenderClock   uint64 // sender clock
+	ReceiverClock uint64 // sender view of receiver clock
 }
 
 // args in disconnect(args)
 type DisconnectArgs struct {
-	Clientid uint8 // client id who voluntarilly quit the editor
+	Clientid string // client id who voluntarilly quit the editor
 }
 
 // Reply from service for all the API calls above.
@@ -45,17 +53,28 @@ type EntangleClient int
 // Command line arg. Can be based on a config file
 var numPeers uint8
 
+// local ip:port for the peer
+var localClient string
+
 //a slice holding peer ip addresses
 var peerAddresses []string
 
 // a slice hoding rpc service of peers
 var peerServices []*rpc.Client
 
+// sequence vector maintain logical clocks of last received operation from every peers
+// including itself. Assumming all logical clocks start at 0.
+// the content of the seqVector will need to be stored to disk. (what happens if crashed without saving?)
+// (Ans: can be by operation log and the Sync protocol)
+var seqVector map[string]uint64
+
 // a insert char message from a peer.
 func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// decompose InsertArgs
 	posIdentifier := args.Pair.Pos
 	atom := []byte(args.Pair.Atom)
+	peerClock := args.Clock
+	peer := args.Clientid
 
 	if string(atom) == "" || len(posIdentifier) == 0 {
 		return nil
@@ -77,7 +96,9 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	buf.Update()
 
 	RedrawAll()
-	// clear the current tab
+	// set clock for the peer, don't need to increment
+	seqVector[peer] = peerClock
+
 	return nil
 }
 
@@ -85,6 +106,8 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 	posIdentifier := args.Pair.Pos
 	atom := []byte(args.Pair.Atom)
+	peerClock := args.Clock
+	peer := args.Clientid
 
 	if string(atom) == "" || len(posIdentifier) == 0 {
 		return nil
@@ -106,19 +129,34 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 	buf.Update()
 
 	RedrawAll()
-	// clear the current tab
+	// set clock for the peer, don't need to increment
+	seqVector[peer] = peerClock
+
 	return nil
 }
 
-// CONNECT to a peer.
+// Received connection request from a peer
 func (ec *EntangleClient) Connect(args *ConnectArgs, reply *ValReply) error {
 	// This set the global slice peerServices
-	// currently only one peer
+	// currently only one peer, later need to be changed. TODO:
 	peerServices[0], _ = rpc.Dial("tcp", peerAddresses[0])
 
-	// redraw the status line, the above may fail as well
+	// the above may fail as well
+	if peerServices[0] == nil {
+		return errors.New("unable to connect to the requester")
+	}
+	// now, connected redraw the status line
 	RedrawAll()
-	//CurView().sline.Display() does not refresh
+
+	// should not initiating pair-wise sync protocol here (this is receiver), just return
+	// however, we may send the logical clock if we want.
+
+	return nil
+}
+
+// received SyncPhaseOne from a peer
+func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *ValReply) error {
+	//TODO
 
 	return nil
 }
@@ -143,7 +181,11 @@ func InitConnections() {
 		os.Exit(1)
 	}
 
-	ip_port := args[0] // local ip
+	localClient = args[0] // local ip:port global
+
+	seqVector = make(map[string]uint64) // seqVector global
+
+	seqVector[localClient] = 0 // clock starts at 0
 
 	numPeers = 2 // including itself
 
@@ -152,7 +194,7 @@ func InitConnections() {
 	rpc.Register(entangleClient)
 
 	// listen first
-	l, err := net.Listen("tcp", ip_port)
+	l, err := net.Listen("tcp", localClient)
 	if err != nil {
 		log.Fatal("listen error:", err)
 	}
@@ -162,6 +204,7 @@ func InitConnections() {
 	peerServices = make([]*rpc.Client, 1) // must use "="" to assign global variables
 	for i := range peerAddresses {
 		peerAddresses[i] = args[i+1]
+		seqVector[peerAddresses[i]] = 0 // intialize to 0
 		// Connect to other peers via RPC.
 		peerServices[i], err = rpc.Dial("tcp", peerAddresses[i]) // can dial periodically
 		// based on the err, do not have to quit in checkError
@@ -181,10 +224,7 @@ func InitConnections() {
 // // check
 // func checkError (err error) {
 
-
-
 // }
-
 
 // If error is non-nil, print it out and halt.
 // This function is augmented with a RPC call to connect, the remote peer
@@ -197,11 +237,38 @@ func checkErrorAndConnect(err error) {
 	} else { // if no error, RPC connect
 		// now send to peers
 		ConnectArgs := ConnectArgs{
-			Clientid: 1, // TODO
+			Clientid: localClient, // TODO
 		}
 		var kvVal ValReply
-		// asynchronously, does not matter if synchronous
-		go func() { peerServices[0].Call("EntangleClient.Connect", ConnectArgs, &kvVal) }()
+		// asynchronously, does not matter if synchronous. TODO: change invokee
+		go func() {
+			err := peerServices[0].Call("EntangleClient.Connect", ConnectArgs, &kvVal)
+			// let's follow the original protocol
+			// initiating pair-wise sync protocol here
+			if err == nil {
+				pairWiseSync(peerAddresses[0]) // TODO: change argument
+			} else {
+				fmt.Println("Error", err.Error())
+			}
+		}()
 
 	}
+}
+
+// The pair-wise synchronization protocol here
+func pairWiseSync(peer string) {
+	// Phase one: requester sending <local clock, peer clock>
+	// type SyncPhaseOneArgs struct {
+	// 	Clientid      string // requester
+	// 	SenderClock   uint64 // sender clock
+	// 	ReceiverClock uint64 // sender view of receiver clock
+	// }
+	SyncPhaseOneArgs := SyncPhaseOneArgs{
+		Clientid:      localClient,
+		SenderClock:   seqVector[localClient],
+		ReceiverClock: seqVector[peer],
+	}
+	var kvVal ValReply
+	peerServices[0].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &kvVal)
+
 }

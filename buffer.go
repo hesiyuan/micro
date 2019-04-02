@@ -718,14 +718,17 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value)
 	// insertMultiple is necessary as user can delete a text region indicated by a cursor range
 
+	// last thing in the local operation is to increment the logical clock
+	seqVector[localClient] = seqVector[localClient] + 1
+
 	// REMOTE. This can also be wrapped into a function in connection.go
 	if peerServices[0] == nil { // checking connection
 		return
 	}
 	// now send to peers
 	InsertArgs := InsertArgs{
-		Clientid: 1,   // TODO
-		Clock:    123, // TODO
+		Clientid: localClient, // hardcoding for now TODO:
+		Clock:    seqVector[localClient],
 		Pair: pair{
 			Pos:  posIdentifier,
 			Atom: string(value),
@@ -774,16 +777,20 @@ func (b *Buffer) remove(start, end Loc) string {
 
 	// delete pairs[startIndex:endIndex], not including endIndex
 	posIdentifier := b.Document.deleteMultiple(startIndex, endIndex)
+
+	// last thing in the local operation is to increment the logical clock
+	seqVector[localClient] = seqVector[localClient] + 1
+
 	// REMOTE. This can also be wrapped into a function in connection.go
 	// Currently, the following code assumes deleting just one char.
 
-	if len(peerServices) < 1 { // checking connection
+	if peerServices[0] == nil { // checking connection
 		return value
 	}
 	// now send to peers
 	DeleteArgs := DeleteArgs{
-		Clientid: 1,   // TODO
-		Clock:    123, // TODO
+		Clientid: localClient, // hardcoding for now TODO:
+		Clock:    seqVector[localClient],
 		Pair: pair{
 			Pos:  posIdentifier,
 			Atom: string(value),
@@ -792,7 +799,21 @@ func (b *Buffer) remove(start, end Loc) string {
 	var kvVal ValReply
 	// currently only one peer. This is blocking, in production, may need to timeout TODO:
 	// later need to extent to loops
-	go func() { peerServices[0].Call("EntangleClient.Delete", DeleteArgs, &kvVal) }() // rpc
+	go func() {
+		c := make(chan error, 1) // not really necessary
+		select {                 // select blocks until one of the following cases is able to run
+		case c <- peerServices[0].Call("EntangleClient.Delete", DeleteArgs, &kvVal):
+			// use err and reply
+			v := <-c
+			if v != nil { // for whatever reason, there is an error
+				peerServices[0] = nil // set to nil naively and immediately
+			}
+		case <-time.After(5 * time.Second): // receive from time.After channel
+			// call timed out, setting peerServices[0] to nil for now
+			peerServices[0] = nil
+		}
+
+	}() // rpc
 
 	return value
 }
