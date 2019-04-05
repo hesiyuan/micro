@@ -40,7 +40,7 @@ func NewDocument(content []string, clientID uint8) *Document {
 	d := &Document{clientID: clientID} // local variable? stored in stack?
 	// Note that, unlike in C, it's perfectly OK to return the address of a local variable;
 	// the storage associated with the variable survives after the function returns.
-	d.insert(Start, "")
+	d.insert(Start, "") // note that this does not increment logical clock
 	d.insert(End, "")
 	for _, c := range content {
 		// End will always exist.

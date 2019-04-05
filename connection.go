@@ -62,12 +62,6 @@ var peerAddresses []string
 // a slice hoding rpc service of peers
 var peerServices []*rpc.Client
 
-// sequence vector maintain logical clocks of last received operation from every peers
-// including itself. Assumming all logical clocks start at 0.
-// the content of the seqVector will need to be stored to disk. (what happens if crashed without saving?)
-// (Ans: can be by operation log and the Sync protocol)
-var seqVector map[string]uint64
-
 // a insert char message from a peer.
 func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// decompose InsertArgs
@@ -182,12 +176,7 @@ func InitConnections() {
 	}
 
 	localClient = args[0] // local ip:port global
-
-	seqVector = make(map[string]uint64) // seqVector global
-
-	seqVector[localClient] = 0 // clock starts at 0
-
-	numPeers = 2 // including itself
+	numPeers = 2          // including itself
 
 	// Setup and register service.
 	entangleClient := new(EntangleClient)
@@ -204,7 +193,6 @@ func InitConnections() {
 	peerServices = make([]*rpc.Client, 1) // must use "="" to assign global variables
 	for i := range peerAddresses {
 		peerAddresses[i] = args[i+1]
-		seqVector[peerAddresses[i]] = 0 // intialize to 0
 		// Connect to other peers via RPC.
 		peerServices[i], err = rpc.Dial("tcp", peerAddresses[i]) // can dial periodically
 		// based on the err, do not have to quit in checkError
@@ -270,5 +258,9 @@ func pairWiseSync(peer string) {
 	}
 	var kvVal ValReply
 	peerServices[0].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &kvVal)
+
+	// get some results back from the requestee
+
+	// based on the results, send patch in return to the requestee
 
 }

@@ -353,9 +353,13 @@ func main() {
 	InitCommands()  //command.go
 	InitBindings() //bindings.go
 
+	// TODO: init storage somewhere here, should before connections initliazation
+	// as pairWisesync protocol relies on the creation of seqVector
+
 	// init connection
 	InitConnections()
-	
+
+
 	// Start the screen
 	InitScreen()
 
@@ -365,6 +369,7 @@ func main() {
 	defer func() {
 		if err := recover(); err != nil {
 			screen.Fini()
+			// TODO: saving to storage here
 			fmt.Println("Micro encountered an error:", err)
 			// Print the stack trace too
 			fmt.Print(errors.Wrap(err, 2).ErrorStack())

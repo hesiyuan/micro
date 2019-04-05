@@ -38,7 +38,7 @@ type Buffer struct {
 	*EventHandler
 	// This stores all the text in the buffer as an array of lines
 	*LineArray
-	// add document CRDT here
+	// This stores document CRDT
 	*Document
 
 	Cursor    Cursor
