@@ -2,8 +2,12 @@ package main
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"log"
 	"os"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // sequence vector maintain logical clocks of last received operation from every peers
@@ -15,7 +19,14 @@ import (
 // Currently, seqVector is initialized in connection.go
 var seqVector map[string]uint64
 
+// Init tables
+func InitStorage() {
+	createSeqVStorage()
+
+}
+
 // Used localClient and peerAddresses in connection.go
+// CAUTION:This function is deprecated and should not be used
 func createSeqVector() {
 
 	seqVector = make(map[string]uint64) // seqVector global
@@ -35,16 +46,25 @@ func createSeqVector() {
 // If the file currently being edited has no name, _seqV.db will be created.
 // If the file has name <filename>, <filename>_seqV.db will be created.
 // For now, let's be simple, just name it to be seqV.db
+// Note: This func has not been tested
 func createSeqVStorage() {
 
 	// suffix := "_seqV.db"
 	// prefix := "./"
 
 	// path := prefix + CurView().Buf.name + suffix
-	path := "./seqV.db"
-	os.Remove(path)
+	path := "./seqV" + clientID + ".db"
 
-	db, err := sql.Open("sqlite3", path)
+	// need to check whether the file exists, return immediately if so
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		// file does exist, load the table into SeqVector
+		loadStorageIntoSeqVector() // TODO: table may not be fully created.
+		return
+	}
+
+	// The file does not exist, this is a new file
+	// create a seqVector table associated with the file
+	db, err := sql.Open("sqlite3", path) // a potential issues is corruption with the database
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,6 +83,23 @@ func createSeqVStorage() {
 		log.Printf("%q: %s\n", err, sqlStmt)
 		return
 	}
+
+	//loadStorageIntoSeqVector()
+	// This is the first time using the seqVector, set to 0s
+	resetSeqVector()
+	// update storage
+	SeqVectorToStorage()
+}
+
+// This function saves seqVector back to storage
+func SeqVectorToStorage() {
+	path := "./seqV" + clientID + ".db"
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
 
 	tx, err := db.Begin() // transaction
 	if err != nil {
@@ -86,11 +123,22 @@ func createSeqVStorage() {
 	tx.Commit()
 }
 
-// This function loads the storage into runtime seqVector
-// Pre: seqVector must exist
+// This function resets SeqVector to 0s
+func resetSeqVector() {
+	// initialize peerAddresses and seqVector first
+	for i := range peerAddresses {
+		seqVector[peerAddresses[i]] = 0 // intialize to 0
+	}
+
+}
+
+// This function loads the storage into runtime seqVector.
+// This should be called once when entangleText launchs
+// Pre: seqVector must exist.
+// Note: This func has not been tested
 func loadStorageIntoSeqVector() {
-	path := "./seqV.db"
-	os.Remove(path)
+	path := "./seqV" + clientID + ".db"
+	//os.Remove(path) // TODO:
 
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -104,6 +152,9 @@ func loadStorageIntoSeqVector() {
 		log.Fatal(err)
 	}
 	defer rows.Close()
+
+	counter := uint8(0)
+
 	for rows.Next() {
 		var clientID string
 		var clock uint64
@@ -112,8 +163,14 @@ func loadStorageIntoSeqVector() {
 			log.Fatal(err)
 		}
 		seqVector[clientID] = clock // assignment
-		//fmt.Println(clientID, clock)
+		counter = counter + 1
 	}
+
+	if counter != numPeers {
+		err := errors.New("SeqVector table corrupted")
+		fmt.Print(err)
+	}
+
 	err = rows.Err()
 	if err != nil {
 		log.Fatal(err)

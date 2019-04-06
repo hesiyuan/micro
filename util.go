@@ -11,9 +11,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-errors/errors"
-	"github.com/mattn/go-runewidth"
 	"regexp"
+
+	"github.com/go-errors/errors"
+	runewidth "github.com/mattn/go-runewidth"
 )
 
 // Util.go is a collection of utility functions that are used throughout
@@ -55,6 +56,7 @@ func sliceStart(slc []byte, index int) []byte {
 
 	return slc[totalSize:]
 }
+
 // what's this??
 func sliceEnd(slc []byte, index int) []byte {
 	len := len(slc)
@@ -397,4 +399,16 @@ func ParseCursorLocation(cursorPositions []string) (Loc, error) {
 	}
 
 	return startpos, err
+}
+
+// This function assumes the ipPort is of the form <A.B.C.D:E>
+// and ontput id as ABCDE. This function has not been tested
+func assembleClientID(ipPort string) (id string) {
+
+	a_b_c_de := strings.Split(ipPort, ".")
+	d_e := strings.Split(a_b_c_de[len(a_b_c_de)-1], ":")
+
+	id = a_b_c_de[0] + a_b_c_de[1] + a_b_c_de[2] + d_e[0] + d_e[1]
+
+	return id
 }

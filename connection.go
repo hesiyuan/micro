@@ -56,6 +56,9 @@ var numPeers uint8
 // local ip:port for the peer
 var localClient string
 
+// clientID
+var clientID string
+
 //a slice holding peer ip addresses
 var peerAddresses []string
 
@@ -133,7 +136,7 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 func (ec *EntangleClient) Connect(args *ConnectArgs, reply *ValReply) error {
 	// This set the global slice peerServices
 	// currently only one peer, later need to be changed. TODO:
-	peerServices[0], _ = rpc.Dial("tcp", peerAddresses[0])
+	peerServices[0], _ = rpc.Dial("tcp", peerAddresses[1])
 
 	// the above may fail as well
 	if peerServices[0] == nil {
@@ -176,7 +179,21 @@ func InitConnections() {
 	}
 
 	localClient = args[0] // local ip:port global
-	numPeers = 2          // including itself
+	clientID = assembleClientID(localClient)
+	numPeers = 2 // including itself
+
+	seqVector = make(map[string]uint64) // seqVector global
+
+	peerAddresses = make([]string, 2)
+	// initialize peerAddresses first
+	for i := range peerAddresses {
+		peerAddresses[i] = args[i]
+	}
+
+	// This fills in seqVector based on storage
+	createSeqVStorage()
+
+	// By now, seqVector and its storage has been created.
 
 	// Setup and register service.
 	entangleClient := new(EntangleClient)
@@ -189,12 +206,13 @@ func InitConnections() {
 	}
 
 	// then dial
-	peerAddresses = make([]string, 1)
 	peerServices = make([]*rpc.Client, 1) // must use "="" to assign global variables
 	for i := range peerAddresses {
-		peerAddresses[i] = args[i+1]
+		if i == 0 { // peerAddresses[0] is now itself
+			continue
+		}
 		// Connect to other peers via RPC.
-		peerServices[i], err = rpc.Dial("tcp", peerAddresses[i]) // can dial periodically
+		peerServices[i-1], err = rpc.Dial("tcp", peerAddresses[i]) // can dial periodically
 		// based on the err, do not have to quit in checkError
 		checkErrorAndConnect(err)
 	}
