@@ -177,3 +177,41 @@ func loadStorageIntoSeqVector() {
 	}
 
 }
+
+// This function select operations between receiverClock and localClock
+// In this minimum where they are equal, the return value contains one operation
+func ExtractOperationsBetween(ReceiverClock, localClock uint64) (patch []Operation) {
+	path := "./seqV" + clientID + ".db"
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query("select * from ops where clock between ? and ?", ReceiverClock, localClock) // select by range
+	if err != nil {
+		log.Fatal(err)
+	} // as long as there’s an open result set (represented by rows), the underlying connection is busy and can’t be used for any other query.
+	defer rows.Close() //We defer rows.Close(). This is very important.
+
+	patch = make([]Operation, localClock-ReceiverClock+1)
+	index := 0
+
+	for rows.Next() {
+		err = rows.Scan(&patch[index].Clock,
+			&patch[index].Atom,
+			&patch[index].OpType,
+			&patch[index].Pos) // this obtains data
+		if err != nil { // If there’s an error during the loop, you need to know about it.
+			log.Fatal(err)
+		}
+		index = index + 1
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return patch
+}

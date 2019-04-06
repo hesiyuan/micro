@@ -37,6 +37,21 @@ type SyncPhaseOneArgs struct {
 	ReceiverClock uint64 // sender view of receiver clock
 }
 
+// This can be a little redundant and can be refactored later
+type Operation struct {
+	Atom   string // content
+	OpType bool   // true for insert, false for delete
+	Pos    []byte // a serilized position in bytes for sending and receiving
+	Clock  uint64 // logical clock
+}
+
+//SyncPhaseOneReply.
+type SyncPhaseOneReply struct {
+	PhaseTwo       bool        // set to true, if second phase is required
+	RequesterClock uint64      // receiver's view of requester's clock
+	Patch          []Operation // operations
+}
+
 // args in disconnect(args)
 type DisconnectArgs struct {
 	Clientid string // client id who voluntarilly quit the editor
@@ -152,9 +167,55 @@ func (ec *EntangleClient) Connect(args *ConnectArgs, reply *ValReply) error {
 }
 
 // received SyncPhaseOne from a peer
-func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *ValReply) error {
+func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *SyncPhaseOneReply) error {
 	//TODO
+	//SyncPhaseOneArgs
+	// type SyncPhaseOneArgs struct {
+	// 	Clientid      string // requester
+	// 	SenderClock   uint64 // sender clock
+	// 	ReceiverClock uint64 // sender view of receiver clock
+	// }
 
+	// Requestee and Sender are synonyms, receiver is *this* client.
+	// extract the current view of the requestee's clock.
+	// This extracts from runtime DS
+	requesterClock := seqVector[args.Clientid]
+
+	// if requesterClock == SenderClock, then we have the most updated ops from the sender
+	// no need to proceed to the second phase os sync
+	if requesterClock == args.SenderClock {
+		reply.PhaseTwo = false
+	} else if requesterClock < args.SenderClock {
+		// then we need to request the sender as well for new ops
+		// setting PhaseTwo to true and indicate in the reply.RequesterClock
+		reply.RequesterClock = requesterClock
+		reply.PhaseTwo = true
+
+	} else {
+		// if requesterClock > SenderClock, this case is unusual but may happen
+		// for example, the storage on the sender side has corrupted and hence reset.
+		// for now in this case, just return an error
+		return errors.New("requesterClock > SenderClock")
+
+	}
+
+	localClock := seqVector[localClient]
+	if localClock == args.ReceiverClock {
+		// the requester's view is up to date. no need to send patch
+
+	} else if localClock > args.ReceiverClock {
+		//then need to prepare patches to be sent to the requester
+		// this will need to ask from storage, but we can have a buffered operations for efficiency
+		// Currently, we assume every local operation is immediately write-back
+		reply.Patch = ExtractOperationsBetween(args.ReceiverClock+1, localClock) // notice the plus one
+
+	} else {
+		// if localClock < ReceiverClock, this case is unusual but could happen
+		// for instance, the local storage has corrupted and hence reset.
+		// for now in this case, just return an error
+		return errors.New("localClock < ReceiverClock")
+	}
+	// return no error
 	return nil
 }
 
