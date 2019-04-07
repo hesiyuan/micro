@@ -352,14 +352,12 @@ func main() {
 	InitCommands() //command.go
 	InitBindings() //bindings.go
 
+	// TODO: the following two init can also be moved below even under tab initialization
+	// for faster screen loading
 	// init all peers information
 	InitPeersInfo()
 	// init ops storage somewhere here
 	InitStorage()
-	// note that seqVector storage is init during the connection initiazation
-
-	// init connection
-	InitConnections()
 
 	// Start the screen
 	InitScreen()
@@ -409,6 +407,11 @@ func main() {
 			SetOption(k, *v)
 		}
 	}
+
+	// can init connections over here to avoid the problem of tab not initialized during synching
+	// note that seqVector storage is init during the connection initiazation
+	// init connection
+	InitConnections()
 
 	// Load all the plugin stuff
 	// We give plugins access to a bunch of variables here which could be useful to them

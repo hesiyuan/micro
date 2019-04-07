@@ -721,12 +721,15 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 
 	// last thing in the local operation is to increment the logical clock
 	seqVector[localClient] = seqVector[localClient] + 1
-	// write operation to local storage, can open a writer in the buffer field using TX
-	err := writeOpToStorage(string(value), true, seqVector[localClient], posIdentifier)
 
-	if err != nil {
-		fmt.Println("Error", err.Error())
-	}
+	// write operation to local storage, can open a writer in the buffer field using TX
+	go func() { // do this in a separate go routine
+		err := writeOpToStorage(string(value), true, seqVector[localClient], posIdentifier)
+
+		if err != nil {
+			fmt.Println("Error", err.Error())
+		}
+	}()
 	// REMOTE. This can also be wrapped into a function in connection.go
 	if peerServices[0] == nil { // checking connection
 		return

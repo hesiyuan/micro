@@ -190,6 +190,7 @@ func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *SyncPhaseO
 		// setting PhaseTwo to true and indicate in the reply.RequesterClock
 		reply.RequesterClock = requesterClock
 		reply.PhaseTwo = true
+		// 	requesterClock update on seqVector to be done in the sync phase two
 
 	} else {
 		// if requesterClock > SenderClock, this case is unusual but may happen
@@ -319,7 +320,7 @@ func checkErrorAndConnect(err error) {
 			// let's follow the original protocol
 			// initiating pair-wise sync protocol here
 			if err == nil {
-				pairWiseSync(peerAddresses[0]) // TODO: change argument
+				pairWiseSync(peerAddresses[1]) // TODO: change argument
 			} else {
 				fmt.Println("Error", err.Error())
 			}
@@ -341,11 +342,63 @@ func pairWiseSync(peer string) {
 		SenderClock:   seqVector[localClient],
 		ReceiverClock: seqVector[peer],
 	}
-	var kvVal ValReply
-	peerServices[0].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &kvVal)
+	var reply SyncPhaseOneReply
+	peerServices[0].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &reply)
 
-	// get some results back from the requestee
+	// get some results back from the receiver
+	// type SyncPhaseOneReply struct {
+	// 	PhaseTwo       bool        // set to true, if second phase is required
+	// 	RequesterClock uint64      // receiver's view of requester's clock
+	// 	Patch          []Operation // operations
+	// }
+	// the patch should already sorted in increasing clock values
+	if reply.Patch != nil {
+		// going to insert this patch to the document
+		// EntangleClient.insert()
+		// buffer pointer, supports one tab currently
+		buf := CurView().Buf
+		for _, op := range reply.Patch { // TODO: refactor
+			if op.OpType == true { // insert operation
+				// the CRDTIndex is the index for the atom to be inserted in the document
+				posIdentifier := NewPos(op.Pos)
+				CRDTIndex, _ := buf.Document.Index(posIdentifier)
+				// converting CRDTIndex to lineArray pos
+				LinePos := FromCharPos(CRDTIndex-1, buf) // off by 1
+				// This directly insert to document and lineArray directly bypassing the eventsQueue
+				// Let's insert to lineArray first
+				buf.LineArray.insert(LinePos, []byte(op.Atom))
+				// now insert to document
+				buf.Document.insert(posIdentifier, op.Atom)
+				// update numoflines in lineArray
+				buf.Update()
 
-	// based on the results, send patch in return to the requestee
+			} else { // delete operation
+				// the CRDTIndex is the index for the atom to be deleted in the document
+				posIdentifier := NewPos(op.Pos)
+				CRDTIndex, _ := buf.Document.Index(posIdentifier)
+				// converting CRDTIndex to lineArray pos
+				LinePos := FromCharPos(CRDTIndex-1, buf) // CRDT_index is one index higher
+				// This directly delet to document and lineArray directly bypassing the eventsQueue
+				buf.LineArray.remove(LinePos, LinePos.right(buf)) // removing one char at LinePos
+
+				// given position identifier, delete directly
+				buf.Document.delete(posIdentifier)
+				// update numoflines in lineArray
+				buf.Update()
+
+			}
+		}
+
+		RedrawAll()
+
+	}
+
+	if reply.PhaseTwo == false {
+		// not need to do phase two
+		return
+	} else {
+		// using RequesterClock to determine the patch to be sent over
+
+	}
 
 }
