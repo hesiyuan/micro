@@ -47,7 +47,7 @@ func createSeqVector() {
 
 }
 
-// This function creates operations storage and prepares two statements (insert/delete)
+// This function creates operations storage and prepares a statement for (insert/delete)
 // Each operation in the table is a tuple <Atom, operation, clock, Pos>
 // clock is the primary key
 // Current implementation assumes each client is with a single ops table
@@ -56,6 +56,15 @@ func CreateOpsStorage() {
 	//Open is used to create a database handle
 	path := "./ops" + clientID + ".db"
 	var err error
+	// createFlag indicates whether to create a ops table
+	createFlag := true
+
+	// need to check whether the local Ops exists, set createFlag to false if so
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		// they may be situation that file exists but not table, we suppose this is unlikely
+		createFlag = false
+	}
+
 	opsdb, err = sql.Open("sqlite3", path)
 	if err != nil {
 		log.Fatal(err)
@@ -63,19 +72,21 @@ func CreateOpsStorage() {
 	//It is rare to Close a DB, as the DB handle is meant to be long-lived and shared between many goroutines.
 	//defer db.Close()
 
-	sqlStmt := `
-	create table ops (
-		 clock integer not null primary key,
-		 atom text,
-		 operation integer,
-		 posIdentifier blob
-		 );
-	delete from ops;
-	`
-	_, err = opsdb.Exec(sqlStmt)
-	if err != nil {
-		log.Printf("%q: %s\n", err, sqlStmt)
-		return
+	if createFlag == true {
+		sqlStmt := `
+		create table ops (
+			 clock integer not null primary key,
+			 atom text,
+			 operation integer,
+			 posIdentifier blob
+			 );
+		delete from ops;
+		`
+		_, err = opsdb.Exec(sqlStmt)
+		if err != nil {
+			log.Printf("%q: %s\n", err, sqlStmt)
+			return
+		}
 	}
 
 	Stmt, err = opsdb.Prepare("insert into ops(clock, atom, operation, posIdentifier) values(?, ?, ?, ?)")
@@ -118,7 +129,7 @@ func createSeqVStorage() {
 	// need to check whether the file exists, return immediately if so
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		// file does exist, load the table into SeqVector
-		loadStorageIntoSeqVector() // TODO: table may not be fully created.
+		loadStorageIntoSeqVector() // TODO: table may not be fully created. TODO: peridocic saving here as well
 		return
 	}
 
@@ -147,12 +158,19 @@ func createSeqVStorage() {
 	//loadStorageIntoSeqVector()
 	// This is the first time using the seqVector, set to 0s
 	resetSeqVector()
-	// update storage
-	SeqVectorToStorage()
+	// update is false, since it is the first time
+	SeqVectorToStorage(false)
+
+	// periodically saving SeqVector back to storage
+	// current period is set to 10s for testing. deployment time may be longer TODO:
+	// a dirty flag is also used to prevent unnecessary saving
+
 }
 
-// This function saves seqVector back to storage
-func SeqVectorToStorage() {
+// This function saves seqVector back to storage. If it is the first time,
+// records will be created. If the seqV exists, all entries will be updated
+// The flag passed into it dertermins to insert or update entries
+func SeqVectorToStorage(update bool) {
 	path := "./seqV" + clientID + ".db"
 
 	db, err := sql.Open("sqlite3", path)
@@ -165,16 +183,30 @@ func SeqVectorToStorage() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	stmt, err := tx.Prepare("insert into seqV(clientID, clock) values(?, ?)")
+
+	var statement *sql.Stmt
+	// if update all entries
+	if update == true {
+		statement, err = tx.Prepare("update seqV set clock = ? where clientID = ?")
+
+	} else {
+		statement, err = tx.Prepare("insert into seqV(clientID, clock) values(?, ?)")
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer stmt.Close()
+	defer statement.Close()
 
 	// iterating over the map
 	// Note: it is assumed seqVector DS has been created
 	for clientK, clockV := range seqVector {
-		_, err = stmt.Exec(clientK, clockV)
+		if update == true {
+			_, err = statement.Exec(clockV, clientK) // update
+		} else {
+			_, err = statement.Exec(clientK, clockV) // insert
+		}
+
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -194,7 +226,7 @@ func resetSeqVector() {
 
 // This function loads the storage into runtime seqVector.
 // This should be called once when entangleText launchs
-// Pre: seqVector must exist.
+// Pre: seqVector DS must exist.
 // Note: This func has not been tested
 func loadStorageIntoSeqVector() {
 	path := "./seqV" + clientID + ".db"

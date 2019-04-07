@@ -1834,7 +1834,7 @@ func (v *View) Escape(usePlugin bool) bool {
 	return false
 }
 
-// Quit this will close the current tab or view that is open
+// Quit this will close the current tab or view that is open. Triggered by Ctrl+Q
 func (v *View) Quit(usePlugin bool) bool {
 	if v.mainCursor() {
 		if usePlugin && !PreActionCall("Quit", v) {
@@ -1844,6 +1844,7 @@ func (v *View) Quit(usePlugin bool) bool {
 		// Make sure not to quit if there are unsaved changes
 		if v.CanClose() {
 			v.CloseBuffer()
+			SeqVectorToStorage(true) // update storage here as well upon exit
 			if len(tabs[curTab].Views) > 1 {
 				v.splitNode.Delete()
 				tabs[v.TabNum].Cleanup()

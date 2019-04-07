@@ -366,9 +366,10 @@ func main() {
 	// mess up the terminal being worked in
 	// In other words we need to shut down tcell before the program crashes
 	defer func() {
+		// saving to storage here as well upon exit
+		SeqVectorToStorage(true) // this code seems not executed, unable to test this
 		if err := recover(); err != nil {
 			screen.Fini()
-			// TODO: saving to storage here
 			fmt.Println("Micro encountered an error:", err)
 			// Print the stack trace too
 			fmt.Print(errors.Wrap(err, 2).ErrorStack())
@@ -409,7 +410,7 @@ func main() {
 	}
 
 	// can init connections over here to avoid the problem of tab not initialized during synching
-	// note that seqVector storage is init during the connection initiazation
+	// note that seqVector storage is initialized during the connection initiazation
 	// init connection
 	InitConnections()
 

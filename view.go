@@ -247,7 +247,7 @@ func (v *View) CanClose() bool {
 			choice = true
 		} else {
 			choice, canceled = messenger.YesNoPrompt("Save changes to " + v.Buf.GetName() + " before closing? (y,n,esc) ")
-		}
+		} // the above line is blocking waiting for user input
 		if !canceled {
 			//if char == 'y' {
 			if choice {

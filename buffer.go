@@ -790,6 +790,14 @@ func (b *Buffer) remove(start, end Loc) string {
 	// last thing in the local operation is to increment the logical clock
 	seqVector[localClient] = seqVector[localClient] + 1
 
+	// write operation to local storage, can open a writer in the buffer field using TX
+	go func() { // do this in a separate go routine, note it is set to false
+		err := writeOpToStorage(string(value), false, seqVector[localClient], posIdentifier)
+
+		if err != nil {
+			fmt.Println("Error", err.Error())
+		}
+	}()
 	// REMOTE. This can also be wrapped into a function in connection.go
 	// Currently, the following code assumes deleting just one char.
 
