@@ -226,9 +226,9 @@ func (ec *EntangleClient) Disconnect(args *DisconnectArgs, reply *ValReply) erro
 	return nil
 }
 
-// write a init function here
-// currently hardcoding stuff, but peers later may be given by a config file.
-func InitConnections() {
+// This function inits all peers information based on
+// currrently the arguments
+func InitPeersInfo() {
 
 	args := flag.Args() // args has been used by micro.go as filenames
 	// Parse args.
@@ -243,13 +243,19 @@ func InitConnections() {
 	clientID = assembleClientID(localClient)
 	numPeers = 2 // including itself
 
-	seqVector = make(map[string]uint64) // seqVector global
-
 	peerAddresses = make([]string, 2)
 	// initialize peerAddresses first
 	for i := range peerAddresses {
 		peerAddresses[i] = args[i]
 	}
+
+}
+
+// write a init function here
+// currently hardcoding stuff, but peers later may be given by a config file.
+func InitConnections() {
+
+	seqVector = make(map[string]uint64) // seqVector global
 
 	// This fills in seqVector based on storage
 	createSeqVStorage()

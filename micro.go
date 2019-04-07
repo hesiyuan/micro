@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
-	"github.com/mattn/go-isatty"
-	"github.com/mitchellh/go-homedir"
-	"github.com/yuin/gopher-lua"
+	isatty "github.com/mattn/go-isatty"
+	homedir "github.com/mitchellh/go-homedir"
+	lua "github.com/yuin/gopher-lua"
 	"github.com/zyedidia/clipboard"
 	"github.com/zyedidia/micro/cmd/micro/terminfo"
 	"github.com/zyedidia/tcell"
 	"github.com/zyedidia/tcell/encoding"
-	"layeh.com/gopher-luar"
+	luar "layeh.com/gopher-luar"
 )
 
 const (
@@ -124,7 +124,7 @@ func LoadInput() []*Buffer {
 			input = []byte{}
 		}
 		buffers = append(buffers, NewBufferFromString(string(input), filename))
-	} else {// no file specified
+	} else { // no file specified
 		// Option 3, just open an empty buffer
 		buffers = append(buffers, NewBufferFromString(string(input), filename))
 	}
@@ -270,7 +270,6 @@ func LoadAll() { // This seems not called
 	InitCommands()
 	InitBindings()
 
-
 	InitColorscheme()
 	LoadPlugins()
 
@@ -350,15 +349,17 @@ func main() {
 	// Load the user's settings
 	InitGlobalSettings() //settings.go
 
-	InitCommands()  //command.go
+	InitCommands() //command.go
 	InitBindings() //bindings.go
 
-	// TODO: init storage somewhere here, should before connections initliazation
-	// as pairWisesync protocol relies on the creation of seqVector
+	// init all peers information
+	InitPeersInfo()
+	// init ops storage somewhere here
+	InitStorage()
+	// note that seqVector storage is init during the connection initiazation
 
 	// init connection
 	InitConnections()
-
 
 	// Start the screen
 	InitScreen()
@@ -508,7 +509,6 @@ func main() {
 	// use CurView().Buf to access the buffer and insert and delete
 	// TODO:
 
-
 	for { // main infinite loop
 		// Display everything
 		RedrawAll() // this is called after each event is executed
@@ -532,7 +532,7 @@ func main() {
 		case event = <-events: // receive from screen events
 		}
 
-		for event != nil { 
+		for event != nil {
 			didAction := false
 
 			switch e := event.(type) {

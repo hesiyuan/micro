@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	sql "database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -19,14 +19,20 @@ import (
 // Currently, seqVector is initialized in connection.go
 var seqVector map[string]uint64
 
-// Init tables
-func InitStorage() {
-	createSeqVStorage()
+// operations database handle
+var opsdb *sql.DB // from "database/sql"
 
+// long-lived Statement
+var Stmt *sql.Stmt
+
+// This only init Ops storage
+func InitStorage() {
+	//createSeqVStorage()
+	CreateOpsStorage()
 }
 
 // Used localClient and peerAddresses in connection.go
-// CAUTION:This function is deprecated and should not be used
+// CAUTION: This function is deprecated and should not be used
 func createSeqVector() {
 
 	seqVector = make(map[string]uint64) // seqVector global
@@ -39,6 +45,60 @@ func createSeqVector() {
 		seqVector[peerAddresses[i]] = 0 // intialize to 0
 	}
 
+}
+
+// This function creates operations storage and prepares two statements (insert/delete)
+// Each operation in the table is a tuple <Atom, operation, clock, Pos>
+// clock is the primary key
+// Current implementation assumes each client is with a single ops table
+// It only supports a single file. Note that opsdb will remain open
+func CreateOpsStorage() {
+	//Open is used to create a database handle
+	path := "./ops" + clientID + ".db"
+	var err error
+	opsdb, err = sql.Open("sqlite3", path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//It is rare to Close a DB, as the DB handle is meant to be long-lived and shared between many goroutines.
+	//defer db.Close()
+
+	sqlStmt := `
+	create table ops (
+		 clock integer not null primary key,
+		 atom text,
+		 operation integer,
+		 posIdentifier blob
+		 );
+	delete from ops;
+	`
+	_, err = opsdb.Exec(sqlStmt)
+	if err != nil {
+		log.Printf("%q: %s\n", err, sqlStmt)
+		return
+	}
+
+	Stmt, err = opsdb.Prepare("insert into ops(clock, atom, operation, posIdentifier) values(?, ?, ?, ?)")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// do not close the Stmt yet, as it will be used over and over again
+}
+
+func writeOpToStorage(value string, OpType bool, clock uint64, pos []Identifier) error {
+
+	// convert pos to bytes array
+	posBytes := PosBytes(pos)
+
+	_, err := Stmt.Exec(clock, value, OpType, posBytes)
+	if err != nil {
+		log.Fatal(err)
+		return errors.New("unable to write to ops table")
+	}
+
+	return nil
 }
 
 // Given seqVector in runtime, the function creates seqV storage in file system
@@ -181,15 +241,15 @@ func loadStorageIntoSeqVector() {
 // This function select operations between receiverClock and localClock
 // In this minimum where they are equal, the return value contains one operation
 func ExtractOperationsBetween(ReceiverClock, localClock uint64) (patch []Operation) {
-	path := "./seqV" + clientID + ".db"
+	// path := "./seqV" + clientID + ".db"
 
-	db, err := sql.Open("sqlite3", path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	rows, err := db.Query("select * from ops where clock between ? and ?", ReceiverClock, localClock) // select by range
+	// db, err := sql.Open("sqlite3", path)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer db.Close()
+	// query on opsdb directly
+	rows, err := opsdb.Query("select * from ops where clock between ? and ?", ReceiverClock, localClock) // select by range
 	if err != nil {
 		log.Fatal(err)
 	} // as long as there’s an open result set (represented by rows), the underlying connection is busy and can’t be used for any other query.
