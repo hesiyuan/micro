@@ -97,10 +97,10 @@ func NewBufferFromFile(path string) (*Buffer, error) {
 	defer file.Close()
 
 	var buf *Buffer
-	if err != nil {
+	if err != nil { // TODO: remove unnecessary checks
 		// File does not exist -- create an empty buffer with that name
 		buf = NewBufferFromString("", filename)
-	} else {
+	} else { //
 		buf = NewBuffer(file, FSize(file), filename, cursorPosition)
 	}
 
@@ -126,11 +126,14 @@ func NewBuffer(reader io.Reader, size int64, path string, cursorPosition []strin
 	}
 
 	b := new(Buffer)
-	// load from existing file?
-	b.LineArray = NewLineArray(size, reader) // reader contains a file desciptor opened
 
 	// create a new document for now, later need to be restored from memory, id set to 1
-	b.Document = NewDocument(strings.Split(b.LineArray.String(), ""), uint8(1))
+	b.Document = LoadDocument(uint8(1))
+
+	// get the entire content of the document ready passed into LineArray
+	text := b.Document.Content()
+	// load from existing file.
+	b.LineArray = NewLineArray(size, strings.NewReader(text)) // reader contains a file desciptor opened
 
 	b.Settings = DefaultLocalSettings()
 	for k, v := range globalSettings {
@@ -716,20 +719,26 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// given pos, and a byte array (usually just one byte), insert sequentially to CRDT
 	// first converts pos into CRDT document index. The index is the would-be inserted index
 	index := ToCharPos(pos, b) // may need to be called before linearray insert
-	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value)
+	dbID := NextDocID()
+	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value, dbID)
 	// insertMultiple is necessary as user can delete a text region indicated by a cursor range
 
 	// last thing in the local operation is to increment the logical clock
 	seqVector[localClient] = seqVector[localClient] + 1
 
-	// write operation to local storage, can open a writer in the buffer field using TX
-	go func() { // do this in a separate go routine
+	// id passed into the anonymous function to resolve race conditions.
+	// can also do something similar in the delete function
+	// write operation to local storage and docdb, can open a writer in the buffer field using TX
+	go func(id uint64) { // do this in a separate go routine
 		err := writeOpToStorage(string(value), true, seqVector[localClient], posIdentifier)
-
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-	}()
+		err = InsertCharToDocDB(id, string(value), posIdentifier)
+		if err != nil {
+			fmt.Println("Error", err.Error())
+		}
+	}(dbID)
 	// REMOTE. This can also be wrapped into a function in connection.go
 	if peerServices[0] == nil { // checking connection
 		return
@@ -785,7 +794,7 @@ func (b *Buffer) remove(start, end Loc) string {
 	}
 
 	// delete pairs[startIndex:endIndex], not including endIndex
-	posIdentifier := b.Document.deleteMultiple(startIndex, endIndex)
+	posIdentifier, dbID := b.Document.deleteMultiple(startIndex, endIndex)
 
 	// last thing in the local operation is to increment the logical clock
 	seqVector[localClient] = seqVector[localClient] + 1
@@ -793,7 +802,10 @@ func (b *Buffer) remove(start, end Loc) string {
 	// write operation to local storage, can open a writer in the buffer field using TX
 	go func() { // do this in a separate go routine, note it is set to false
 		err := writeOpToStorage(string(value), false, seqVector[localClient], posIdentifier)
-
+		if err != nil {
+			fmt.Println("Error", err.Error())
+		}
+		err = DeleteCharFromDocDB(dbID)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}

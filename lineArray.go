@@ -64,7 +64,7 @@ func Append(slice []Line, data ...Line) []Line {
 }
 
 // reader can be thought as a file descriptor
-// This is called when main initializes. Looks like also support loading from existing file
+// This is called when main initializes. it also support loading from existing file
 // NewLineArray returns a new line array from an array of bytes
 func NewLineArray(size int64, reader io.Reader) *LineArray {
 	la := new(LineArray)

@@ -19,16 +19,29 @@ import (
 // Currently, seqVector is initialized in connection.go
 var seqVector map[string]uint64
 
-// operations database handle
+// operations database handle. Long lived handle
 var opsdb *sql.DB // from "database/sql"
 
-// long-lived Statement
+// document database handle. Long lived
+var docdb *sql.DB
+
+// long-lived Statement for local operations insert
 var Stmt *sql.Stmt
+
+// char insert statement
+var docInsertStmt *sql.Stmt
+
+// char delete statement
+var docDeleteStmt *sql.Stmt
+
+// the docdbID of very last inserted char
+var lastdocdbID uint64
 
 // This only init Ops storage
 func InitStorage() {
 	//createSeqVStorage()
 	CreateOpsStorage()
+	createDocStorage()
 }
 
 // Used localClient and peerAddresses in connection.go
@@ -96,6 +109,167 @@ func CreateOpsStorage() {
 	}
 
 	// do not close the Stmt yet, as it will be used over and over again
+}
+
+// This function creates Doc storage representing the underlying document.
+func createDocStorage() {
+	//Open is used to create a database handle
+	path := "./doc" + clientID + ".db"
+	var err error
+	// createFlag indicates whether to create a doc table
+	createFlag := true
+
+	// need to check whether the doc exists, set createFlag to false if so
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		// they may be situation that file exists but not table, we suppose this is unlikely
+		createFlag = false
+	}
+
+	docdb, err = sql.Open("sqlite3", path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//It is rare to Close a DB, as the DB handle is meant to be long-lived and shared between many goroutines.
+	//defer db.Close()
+
+	if createFlag == true {
+		sqlStmt := `
+		create table doc (
+			 id integer not null primary key,
+			 atom text,
+			 posIdentifier blob
+			 );
+		delete from doc;
+		`
+		_, err = docdb.Exec(sqlStmt)
+		if err != nil {
+			log.Printf("%q: %s\n", err, sqlStmt)
+			return
+		}
+	}
+
+	docInsertStmt, err = docdb.Prepare("insert into doc(id, atom, posIdentifier) values(?, ?, ?)")
+
+	docDeleteStmt, err = docdb.Prepare("delete from doc where id = ?")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if createFlag == false {
+		// load the lastdocID as well
+		loadLastDocID(&lastdocdbID)
+
+	} else {
+		// setting lastdocdbID to 0 as we are creating a new doc
+		// inserting begin and End if we are creating a new document
+		docInsertStmt.Exec(0, "", PosBytes(Start)) // Start
+		docInsertStmt.Exec(1, "", PosBytes(End))   // End
+
+		lastdocdbID = 1
+	}
+
+	// do not close the Stmt yet, as it will be used over and over again
+
+}
+
+// load the id of the very last inserted char
+// assumming id is incrementing, the last id is the max id
+// Pre: docDB hanble must be open
+func loadLastDocID(id *uint64) {
+	// LastID may need to be changed
+	rows, err := docdb.Query("select MAX(id) as LastID from doc")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() { // only iterate once
+		err = rows.Scan(id)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+}
+
+// Insert a char to the docDB
+func InsertCharToDocDB(id uint64, atom string, posIdentifier []Identifier) error {
+	// convert pos to bytes array
+	posBytes := PosBytes(posIdentifier)
+
+	_, err := docInsertStmt.Exec(id, atom, posBytes)
+	if err != nil {
+		log.Fatal(err)
+		return errors.New("unable to write to char to docDB")
+	}
+
+	return nil
+
+}
+
+// Delete a char from the docDB
+func DeleteCharFromDocDB(id uint64) error {
+
+	_, err := docDeleteStmt.Exec(id)
+	if err != nil {
+		log.Fatal(err)
+		return errors.New("unable to delete a char from docDB")
+	}
+
+	return nil
+
+}
+
+// NextDoc returns the next available char ID and advance the last inserted id
+func NextDocID() uint64 {
+	lastdocdbID = lastdocdbID + 1
+	return lastdocdbID
+}
+
+// obvious as its name suggests
+func GetDocID() uint64 {
+	return lastdocdbID
+}
+
+// NewDocument loads from docdb and insert all chars into CRDT document
+// New creates a new Document containing the given content and a clientID
+func LoadDocument(clientID uint8) *Document {
+	d := &Document{clientID: clientID} // local variable? stored in stack?
+	// Note that, unlike in C, it's perfectly OK to return the address of a local variable;
+	// the storage associated with the variable survives after the function returns.
+
+	// select all from docdb database and insert using binary search
+	rows, err := docdb.Query("select id, atom, posIdentifier from doc")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() { // should be sorted by id already
+		var ID uint64
+		var atom string
+		var posIdentifier []byte
+		err = rows.Scan(&ID, &atom, &posIdentifier)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		d.insert(NewPos(posIdentifier), atom, ID)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return d
 }
 
 func writeOpToStorage(value string, OpType bool, clock uint64, pos []Identifier) error {

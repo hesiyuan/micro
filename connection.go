@@ -102,7 +102,7 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	buf.LineArray.insert(LinePos, atom)
 
 	// now insert to document
-	buf.Document.insert(posIdentifier, args.Pair.Atom)
+	buf.Document.insert(posIdentifier, args.Pair.Atom, NextDocID())
 
 	// update numoflines in lineArray
 	buf.Update()
@@ -368,7 +368,7 @@ func pairWiseSync(peer string) {
 				// Let's insert to lineArray first
 				buf.LineArray.insert(LinePos, []byte(op.Atom))
 				// now insert to document
-				buf.Document.insert(posIdentifier, op.Atom)
+				buf.Document.insert(posIdentifier, op.Atom, NextDocID())
 				// update numoflines in lineArray
 				buf.Update()
 

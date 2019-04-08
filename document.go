@@ -24,9 +24,9 @@ type Identifier struct {
 
 // pair is a position identifier and its atom.
 type pair struct {
-	Pos  []Identifier // a position is a list of identifiers
-	Atom string       // this is actually a char, but stick to string for easy future extension to string-wise
-
+	Pos     []Identifier // a position is a list of identifiers
+	Atom    string       // this is actually a char, but stick to string for easy future extension to string-wise
+	docdbID uint64       // unique constant as identified in the docdb
 }
 
 // Start and end positions. These will always exist within a Documentument.
@@ -34,21 +34,6 @@ var (
 	Start = []Identifier{{0, 0}}
 	End   = []Identifier{{^uint16(0), 0}}
 )
-
-// New creates a new Document containing the given content and a clientID
-func NewDocument(content []string, clientID uint8) *Document {
-	d := &Document{clientID: clientID} // local variable? stored in stack?
-	// Note that, unlike in C, it's perfectly OK to return the address of a local variable;
-	// the storage associated with the variable survives after the function returns.
-	d.insert(Start, "") // note that this does not increment logical clock
-	d.insert(End, "")
-	for _, c := range content {
-		// End will always exist.
-		d.InsertLeft(End, c)
-	}
-	d.clientID = clientID
-	return d
-}
 
 /* Basic methods */
 
@@ -112,13 +97,13 @@ func (d *Document) Get(p []Identifier) (string, bool) {
 
 // Insert a new pair at the position, returning success or failure (already existing
 // position). Note that atom is a single byte to insert
-func (d *Document) insert(p []Identifier, atom string) bool {
+func (d *Document) insert(p []Identifier, atom string, docdbID uint64) bool {
 	i, exists := d.Index(p)
 	if exists {
 		return false
 	}
 	// this is harmful for rach condition; insert at position i
-	d.pairs = append(d.pairs[0:i], append([]pair{{p, atom}}, d.pairs[i:]...)...)
+	d.pairs = append(d.pairs[0:i], append([]pair{{p, atom, docdbID}}, d.pairs[i:]...)...)
 	return true
 }
 
@@ -127,12 +112,12 @@ func (d *Document) insert(p []Identifier, atom string) bool {
 // This function is not efficient, as insertRight calls insert which uses append
 // will need to be rewritten to use only a single append
 // RETURN: the pos identifier of the last inserted byte in the byte sequence
-func (d *Document) insertMultiple(p []Identifier, value []byte) ([]Identifier, bool) {
+func (d *Document) insertMultiple(p []Identifier, value []byte, docdbID uint64) ([]Identifier, bool) {
 	if len(value) < 1 {
 		return nil, false
 	}
 
-	np, success := d.InsertRight(p, string(value[0]))
+	np, success := d.InsertRight(p, string(value[0]), docdbID)
 	if !success {
 		return nil, false
 	}
@@ -140,7 +125,7 @@ func (d *Document) insertMultiple(p []Identifier, value []byte) ([]Identifier, b
 	// at this time, the following for loop won't be executed
 	for i := 1; i < len(value); i++ { // go through each byte in value[]
 		// notice that the 1st argument to InsertRight is now updated np
-		np, success = d.InsertRight(np, string(value[i]))
+		np, success = d.InsertRight(np, string(value[i]), docdbID)
 		if !success {
 			return nil, false
 		}
@@ -160,21 +145,22 @@ func (d *Document) delete(p []Identifier) bool {
 }
 
 // Delete pairs starting at startIndex and up to endIndex
-// concurrently returns the position identifier of the first deleted char
+// Currently returns the position identifier and the dbID of the first deleted char
 // later will need to construct a list of position identifiers deleted to be transmitted
-func (d *Document) deleteMultiple(startIndex, endIndex int) []Identifier {
+func (d *Document) deleteMultiple(startIndex, endIndex int) ([]Identifier, uint64) {
 
 	if startIndex == 0 || endIndex == len(d.pairs)+1 { // cannot delete Start and End
-		return nil
+		return nil, 0
 	}
 
 	if startIndex == endIndex { // endIndex must be at least on higher than startIndex
-		return nil
+		return nil, 0
 	}
 
-	i := d.pairs[startIndex].Pos
+	pos := d.pairs[startIndex].Pos
+	dbID := d.pairs[startIndex].docdbID
 	d.pairs = append(d.pairs[0:startIndex], d.pairs[endIndex:]...) // eplisis unpacks the second slice
-	return i
+	return pos, dbID
 }
 
 // Left returns the position to the left of the given position, and a flag indicating
@@ -284,7 +270,7 @@ func (d *Document) GeneratePos(lp []Identifier, rp []Identifier) ([]Identifier, 
 // InsertLeft inserts the atom to the left of the given position, returning the inserted
 // position and whether it is successful (when the given position doesn't exist,
 // InsertLeft won't do anything and return false).
-func (d *Document) InsertLeft(p []Identifier, atom string) ([]Identifier, bool) {
+func (d *Document) InsertLeft(p []Identifier, atom string, docdbID uint64) ([]Identifier, bool) {
 	lp, success := d.Left(p)
 	if !success {
 		return nil, false
@@ -293,13 +279,13 @@ func (d *Document) InsertLeft(p []Identifier, atom string) ([]Identifier, bool) 
 	if !success {
 		return nil, false
 	}
-	return np, d.insert(np, atom)
+	return np, d.insert(np, atom, docdbID)
 }
 
 // InsertRight inserts the atom to the right of the given position, returning the inserted
 // position whether it is successful (when the given position doesn't exist, InsertRight
 // won't do anything and return false).
-func (d *Document) InsertRight(p []Identifier, atom string) ([]Identifier, bool) {
+func (d *Document) InsertRight(p []Identifier, atom string, docdbID uint64) ([]Identifier, bool) {
 	rp, success := d.Right(p)
 	if !success {
 		return nil, false
@@ -308,7 +294,7 @@ func (d *Document) InsertRight(p []Identifier, atom string) ([]Identifier, bool)
 	if !success {
 		return nil, false
 	}
-	return np, d.insert(np, atom)
+	return np, d.insert(np, atom, docdbID)
 }
 
 // DeleteLeft deletes the atom to the left of the given position, returning whether it
