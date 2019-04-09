@@ -101,15 +101,26 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// Let's insert to lineArray first
 	buf.LineArray.insert(LinePos, atom)
 
-	// now insert to document
-	buf.Document.insert(posIdentifier, args.Pair.Atom, NextDocID())
-
 	// update numoflines in lineArray
 	buf.Update()
 
 	RedrawAll()
 	// set clock for the peer, don't need to increment
-	seqVector[peer] = peerClock
+	seqVector[peer].Clock = peerClock
+	seqVector[peer].Dirty = true
+
+	// now insert to document. TODO: can moved into the go routine below
+	dbID := NextDocID() // blocking
+	buf.Document.insert(posIdentifier, args.Pair.Atom, dbID)
+
+	// id passed into the anonymous function to resolve race conditions.
+	// can also do something similar in the delete function
+	go func(id uint64) {
+		err := InsertCharToDocDB(id, string(atom), posIdentifier)
+		if err != nil {
+			fmt.Println("Error", err.Error())
+		}
+	}(dbID)
 
 	return nil
 }
@@ -135,14 +146,22 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 	buf.LineArray.remove(LinePos, LinePos.right(buf)) // removing one char at LinePos
 
 	// given position identifier, delete directly
-	buf.Document.delete(posIdentifier)
+	_, dbID := buf.Document.delete(posIdentifier)
 
 	// update numoflines in lineArray
 	buf.Update()
 
 	RedrawAll()
 	// set clock for the peer, don't need to increment
-	seqVector[peer] = peerClock
+	seqVector[peer].Clock = peerClock
+	seqVector[peer].Dirty = true
+
+	go func() { // do this in a separate go routine, note it is set to false
+		err := DeleteCharFromDocDB(dbID)
+		if err != nil {
+			fmt.Println("Error", err.Error())
+		}
+	}()
 
 	return nil
 }
@@ -179,7 +198,7 @@ func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *SyncPhaseO
 	// Requestee and Sender are synonyms, receiver is *this* client.
 	// extract the current view of the requestee's clock.
 	// This extracts from runtime DS
-	requesterClock := seqVector[args.Clientid]
+	requesterClock := seqVector[args.Clientid].Clock
 
 	// if requesterClock == SenderClock, then we have the most updated ops from the sender
 	// no need to proceed to the second phase os sync
@@ -200,7 +219,7 @@ func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *SyncPhaseO
 
 	}
 
-	localClock := seqVector[localClient]
+	localClock := seqVector[localClient].Clock
 	if localClock == args.ReceiverClock {
 		// the requester's view is up to date. no need to send patch
 
@@ -256,7 +275,7 @@ func InitPeersInfo() {
 // currently hardcoding stuff, but peers later may be given by a config file.
 func InitConnections() {
 
-	seqVector = make(map[string]uint64) // seqVector global
+	seqVector = make(map[string]*seqVEntry) // seqVector global
 
 	// This fills in seqVector based on storage
 	createSeqVStorage()
@@ -339,8 +358,8 @@ func pairWiseSync(peer string) {
 	// }
 	SyncPhaseOneArgs := SyncPhaseOneArgs{
 		Clientid:      localClient,
-		SenderClock:   seqVector[localClient],
-		ReceiverClock: seqVector[peer],
+		SenderClock:   seqVector[localClient].Clock,
+		ReceiverClock: seqVector[peer].Clock,
 	}
 	var reply SyncPhaseOneReply
 	peerServices[0].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &reply)

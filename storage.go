@@ -6,9 +6,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// seqVector entry declaration
+type seqVEntry struct {
+	Clock uint64
+	Dirty bool // dirty flag indicates whether runtime DS has this entry changed since last writs to table
+}
 
 // sequence vector maintain logical clocks of last received operation from every peers
 // including itself. Assumming all logical clocks start at 0.
@@ -17,7 +24,7 @@ import (
 // Moved from connection.go into this file
 // TODO: may need to cleanup the initilization in connection.go
 // Currently, seqVector is initialized in connection.go
-var seqVector map[string]uint64
+var seqVector map[string]*seqVEntry
 
 // operations database handle. Long lived handle
 var opsdb *sql.DB // from "database/sql"
@@ -34,30 +41,19 @@ var docInsertStmt *sql.Stmt
 // char delete statement
 var docDeleteStmt *sql.Stmt
 
-// the docdbID of very last inserted char
-var lastdocdbID uint64
+// the docdbID of very last inserted char. Protected by a lock
+type docdbID struct {
+	value uint64
+	mux   sync.Mutex
+}
+
+var lastdocdbID docdbID
 
 // This only init Ops storage
 func InitStorage() {
 	//createSeqVStorage()
 	CreateOpsStorage()
 	createDocStorage()
-}
-
-// Used localClient and peerAddresses in connection.go
-// CAUTION: This function is deprecated and should not be used
-func createSeqVector() {
-
-	seqVector = make(map[string]uint64) // seqVector global
-
-	// global var localClient
-	seqVector[localClient] = 0 // clock starts at 0
-
-	// global slices peerAddresses
-	for i := range peerAddresses {
-		seqVector[peerAddresses[i]] = 0 // intialize to 0
-	}
-
 }
 
 // This function creates operations storage and prepares a statement for (insert/delete)
@@ -157,8 +153,8 @@ func createDocStorage() {
 	}
 
 	if createFlag == false {
-		// load the lastdocID as well
-		loadLastDocID(&lastdocdbID)
+		// load the lastdocID as well, thread-safe at this point
+		loadLastDocID(&lastdocdbID.value)
 
 	} else {
 		// setting lastdocdbID to 0 as we are creating a new doc
@@ -166,7 +162,7 @@ func createDocStorage() {
 		docInsertStmt.Exec(0, "", PosBytes(Start)) // Start
 		docInsertStmt.Exec(1, "", PosBytes(End))   // End
 
-		lastdocdbID = 1
+		lastdocdbID.value = 1
 	}
 
 	// do not close the Stmt yet, as it will be used over and over again
@@ -228,14 +224,17 @@ func DeleteCharFromDocDB(id uint64) error {
 }
 
 // NextDoc returns the next available char ID and advance the last inserted id
+// protected by a lock
 func NextDocID() uint64 {
-	lastdocdbID = lastdocdbID + 1
-	return lastdocdbID
+	lastdocdbID.mux.Lock()
+	lastdocdbID.value = lastdocdbID.value + 1
+	lastdocdbID.mux.Unlock()
+	return lastdocdbID.value
 }
 
 // obvious as its name suggests
 func GetDocID() uint64 {
-	return lastdocdbID
+	return lastdocdbID.value
 }
 
 // NewDocument loads from docdb and insert all chars into CRDT document
@@ -299,7 +298,8 @@ func createSeqVStorage() {
 
 	// path := prefix + CurView().Buf.name + suffix
 	path := "./seqV" + clientID + ".db"
-
+	// make seqVector
+	makeSeqVector()
 	// need to check whether the file exists, return immediately if so
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		// file does exist, load the table into SeqVector
@@ -330,8 +330,6 @@ func createSeqVStorage() {
 	}
 
 	//loadStorageIntoSeqVector()
-	// This is the first time using the seqVector, set to 0s
-	resetSeqVector()
 	// update is false, since it is the first time
 	SeqVectorToStorage(false)
 
@@ -343,7 +341,8 @@ func createSeqVStorage() {
 
 // This function saves seqVector back to storage. If it is the first time,
 // records will be created. If the seqV exists, all entries will be updated
-// The flag passed into it dertermins to insert or update entries
+// All dirty flags will be cleared as well
+// The flag passed into it dertermines to insert or update entries
 func SeqVectorToStorage(update bool) {
 	path := "./seqV" + clientID + ".db"
 
@@ -374,26 +373,30 @@ func SeqVectorToStorage(update bool) {
 
 	// iterating over the map
 	// Note: it is assumed seqVector DS has been created
-	for clientK, clockV := range seqVector {
+	for clientK, entry := range seqVector {
 		if update == true {
-			_, err = statement.Exec(clockV, clientK) // update
+			if entry.Dirty == false { // do not update unchanged entry
+				continue
+			}
+			_, err = statement.Exec(entry.Clock, clientK) // update
+			entry.Dirty = false                           // clear flag
 		} else {
-			_, err = statement.Exec(clientK, clockV) // insert
+			_, err = statement.Exec(clientK, entry.Clock) // insert
 		}
 
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-
+	// nothing to commit would give an error?
 	tx.Commit()
 }
 
 // This function resets SeqVector to 0s
-func resetSeqVector() {
+func makeSeqVector() {
 	// initialize peerAddresses and seqVector first
 	for i := range peerAddresses {
-		seqVector[peerAddresses[i]] = 0 // intialize to 0
+		seqVector[peerAddresses[i]] = &seqVEntry{0, false}
 	}
 
 }
@@ -428,7 +431,7 @@ func loadStorageIntoSeqVector() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		seqVector[clientID] = clock // assignment
+		seqVector[clientID].Clock = clock // assignment
 		counter = counter + 1
 	}
 

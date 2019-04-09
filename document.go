@@ -135,13 +135,15 @@ func (d *Document) insertMultiple(p []Identifier, value []byte, docdbID uint64) 
 }
 
 // Delete the pair at the position, returning success or failure (non-existent position).
-func (d *Document) delete(p []Identifier) bool {
+// return dbID as a convenience
+func (d *Document) delete(p []Identifier) (bool, uint64) {
 	i, exists := d.Index(p)
 	if !exists || i == 0 || i == len(d.pairs)-1 {
-		return false
+		return false, 0
 	}
+	dbID := d.pairs[i].docdbID
 	d.pairs = append(d.pairs[0:i], d.pairs[i+1:]...)
-	return true
+	return true, dbID
 }
 
 // Delete pairs starting at startIndex and up to endIndex
@@ -300,10 +302,10 @@ func (d *Document) InsertRight(p []Identifier, atom string, docdbID uint64) ([]I
 // DeleteLeft deletes the atom to the left of the given position, returning whether it
 // was successful (when the given position is the start, there is no position to the left
 // of it).
-func (d *Document) DeleteLeft(p []Identifier) bool {
+func (d *Document) DeleteLeft(p []Identifier) (bool, uint64) {
 	lp, success := d.Left(p)
 	if !success {
-		return false
+		return false, 0
 	}
 	return d.delete(lp)
 }
@@ -311,10 +313,10 @@ func (d *Document) DeleteLeft(p []Identifier) bool {
 // DeleteRight deletes the atom to the right of the given position, returning whether it
 // was successful (when the given position is the end, there is no position to the right
 // of it).
-func (d *Document) DeleteRight(p []Identifier) bool {
+func (d *Document) DeleteRight(p []Identifier) (bool, uint64) {
 	rp, success := d.Right(p)
 	if !success {
-		return false
+		return false, 0
 	}
 	return d.delete(rp)
 }

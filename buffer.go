@@ -724,13 +724,14 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// insertMultiple is necessary as user can delete a text region indicated by a cursor range
 
 	// last thing in the local operation is to increment the logical clock
-	seqVector[localClient] = seqVector[localClient] + 1
+	seqVector[localClient].Clock = seqVector[localClient].Clock + 1
+	seqVector[localClient].Dirty = true
 
 	// id passed into the anonymous function to resolve race conditions.
 	// can also do something similar in the delete function
 	// write operation to local storage and docdb, can open a writer in the buffer field using TX
 	go func(id uint64) { // do this in a separate go routine
-		err := writeOpToStorage(string(value), true, seqVector[localClient], posIdentifier)
+		err := writeOpToStorage(string(value), true, seqVector[localClient].Clock, posIdentifier)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
@@ -746,7 +747,7 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// now send to peers
 	InsertArgs := InsertArgs{
 		Clientid: localClient, // hardcoding for now TODO:
-		Clock:    seqVector[localClient],
+		Clock:    seqVector[localClient].Clock,
 		Pair: pair{
 			Pos:  posIdentifier,
 			Atom: string(value),
@@ -797,11 +798,12 @@ func (b *Buffer) remove(start, end Loc) string {
 	posIdentifier, dbID := b.Document.deleteMultiple(startIndex, endIndex)
 
 	// last thing in the local operation is to increment the logical clock
-	seqVector[localClient] = seqVector[localClient] + 1
+	seqVector[localClient].Clock = seqVector[localClient].Clock + 1
+	seqVector[localClient].Dirty = true
 
 	// write operation to local storage, can open a writer in the buffer field using TX
 	go func() { // do this in a separate go routine, note it is set to false
-		err := writeOpToStorage(string(value), false, seqVector[localClient], posIdentifier)
+		err := writeOpToStorage(string(value), false, seqVector[localClient].Clock, posIdentifier)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
@@ -819,7 +821,7 @@ func (b *Buffer) remove(start, end Loc) string {
 	// now send to peers
 	DeleteArgs := DeleteArgs{
 		Clientid: localClient, // hardcoding for now TODO:
-		Clock:    seqVector[localClient],
+		Clock:    seqVector[localClient].Clock,
 		Pair: pair{
 			Pos:  posIdentifier,
 			Atom: string(value),

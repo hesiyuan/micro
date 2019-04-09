@@ -24,7 +24,7 @@ import (
 const (
 	doubleClickThreshold = 400 // How many milliseconds to wait before a second click is not a double click
 	undoThreshold        = 500 // If two events are less than n milliseconds apart, undo both of them
-	autosaveTime         = 8   // Number of seconds to wait before autosaving
+	saveSeqVTime         = 30  // Number of seconds to wait before autosaving
 )
 
 var (
@@ -62,7 +62,7 @@ var (
 
 	// Event channel
 	events   chan tcell.Event
-	autosave chan bool
+	saveSeqV chan bool
 
 	// Channels for the terminal emulator
 	updateterm chan bool
@@ -475,7 +475,7 @@ func main() {
 
 	jobs = make(chan JobFunction, 100)
 	events = make(chan tcell.Event, 100)
-	autosave = make(chan bool)
+	saveSeqV = make(chan bool)
 	updateterm = make(chan bool)
 	closeterm = make(chan int)
 
@@ -500,12 +500,12 @@ func main() {
 		}
 	}()
 
+	// This goroutine routines saves seqVector back to storage
+	// for auto-saving plaintext based on globalsettings, please see github
 	go func() {
 		for {
-			time.Sleep(autosaveTime * time.Second)
-			if globalSettings["autosave"].(bool) {
-				autosave <- true // send to channel
-			}
+			time.Sleep(saveSeqVTime * time.Second)
+			saveSeqV <- true // send to channel
 		}
 	}()
 
@@ -525,10 +525,8 @@ func main() {
 			// If a new job has finished while running in the background we should execute the callback
 			f.function(f.output, f.args...)
 			continue
-		case <-autosave:
-			if CurView().Buf.Path != "" {
-				CurView().Save(true)
-			}
+		case <-saveSeqV:
+			SeqVectorToStorage(true) // update Storage
 		case <-updateterm:
 			continue
 		case vnum := <-closeterm:
