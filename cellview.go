@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/mattn/go-runewidth"
+	runewidth "github.com/mattn/go-runewidth"
 	"github.com/zyedidia/tcell"
 )
 
@@ -64,6 +64,7 @@ type CellView struct {
 	lines [][]*Char
 }
 
+// This is the actual text drawing function
 func (c *CellView) Draw(buf *Buffer, top, height, left, width int) {
 	if width <= 0 {
 		return

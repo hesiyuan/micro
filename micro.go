@@ -61,8 +61,8 @@ var (
 	jobs chan JobFunction
 
 	// Event channel
-	events   chan tcell.Event
-	saveSeqV chan bool
+	events chan tcell.Event
+	//saveSeqV chan bool
 
 	// Channels for the terminal emulator
 	updateterm chan bool
@@ -475,7 +475,7 @@ func main() {
 
 	jobs = make(chan JobFunction, 100)
 	events = make(chan tcell.Event, 100)
-	saveSeqV = make(chan bool)
+	//saveSeqV = make(chan bool)
 	updateterm = make(chan bool)
 	closeterm = make(chan int)
 
@@ -505,7 +505,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(saveSeqVTime * time.Second)
-			saveSeqV <- true // send to channel
+			SeqVectorToStorage(true) // update Storage
 		}
 	}()
 
@@ -525,8 +525,6 @@ func main() {
 			// If a new job has finished while running in the background we should execute the callback
 			f.function(f.output, f.args...)
 			continue
-		case <-saveSeqV:
-			SeqVectorToStorage(true) // update Storage
 		case <-updateterm:
 			continue
 		case vnum := <-closeterm:

@@ -52,6 +52,12 @@ type SyncPhaseOneReply struct {
 	Patch          []Operation // operations
 }
 
+//SyncPhaseOneArgs
+type SyncPhaseTwoArgs struct {
+	Clientid string      // sender
+	Patch    []Operation // operations
+}
+
 // args in disconnect(args)
 type DisconnectArgs struct {
 	Clientid string // client id who voluntarilly quit the editor
@@ -100,6 +106,9 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// This directly insert to document and lineArray directly bypassing the eventsQueue
 	// Let's insert to lineArray first
 	buf.LineArray.insert(LinePos, atom)
+	// now insert to document. TODO: can moved into the go routine below
+	dbID := NextDocID() // blocking
+	buf.Document.insert(posIdentifier, args.Pair.Atom, dbID)
 
 	// update numoflines in lineArray
 	buf.Update()
@@ -108,10 +117,6 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// set clock for the peer, don't need to increment
 	seqVector[peer].Clock = peerClock
 	seqVector[peer].Dirty = true
-
-	// now insert to document. TODO: can moved into the go routine below
-	dbID := NextDocID() // blocking
-	buf.Document.insert(posIdentifier, args.Pair.Atom, dbID)
 
 	// id passed into the anonymous function to resolve race conditions.
 	// can also do something similar in the delete function
@@ -237,6 +242,21 @@ func (ec *EntangleClient) SyncPhaseOne(args *SyncPhaseOneArgs, reply *SyncPhaseO
 	}
 	// return no error
 	return nil
+}
+
+// The second phase of the pair-wise Sync protocol
+func (ec *EntangleClient) SyncPhaseTwo(args *SyncPhaseTwoArgs, reply *ValReply) error {
+
+	//  just call insertPatch and update seqVector
+	insertPatch(args.Patch)
+
+	// update seqVector based on the last operation from the patch.
+	// assuming patch contains in increasing clock values.
+	seqVector[args.Clientid].Clock = args.Patch[len(args.Patch)-1].Clock
+	seqVector[args.Clientid].Dirty = true
+
+	return nil
+
 }
 
 // DISCONNECT from a peer.
@@ -371,45 +391,15 @@ func pairWiseSync(peer string) {
 	// 	Patch          []Operation // operations
 	// }
 	// the patch should already sorted in increasing clock values
-	if reply.Patch != nil {
-		// going to insert this patch to the document
-		// EntangleClient.insert()
-		// buffer pointer, supports one tab currently
-		buf := CurView().Buf
-		for _, op := range reply.Patch { // TODO: refactor
-			if op.OpType == true { // insert operation
-				// the CRDTIndex is the index for the atom to be inserted in the document
-				posIdentifier := NewPos(op.Pos)
-				CRDTIndex, _ := buf.Document.Index(posIdentifier)
-				// converting CRDTIndex to lineArray pos
-				LinePos := FromCharPos(CRDTIndex-1, buf) // off by 1
-				// This directly insert to document and lineArray directly bypassing the eventsQueue
-				// Let's insert to lineArray first
-				buf.LineArray.insert(LinePos, []byte(op.Atom))
-				// now insert to document
-				buf.Document.insert(posIdentifier, op.Atom, NextDocID())
-				// update numoflines in lineArray
-				buf.Update()
+	if len(reply.Patch) > 0 {
+		insertPatch(reply.Patch)
 
-			} else { // delete operation
-				// the CRDTIndex is the index for the atom to be deleted in the document
-				posIdentifier := NewPos(op.Pos)
-				CRDTIndex, _ := buf.Document.Index(posIdentifier)
-				// converting CRDTIndex to lineArray pos
-				LinePos := FromCharPos(CRDTIndex-1, buf) // CRDT_index is one index higher
-				// This directly delet to document and lineArray directly bypassing the eventsQueue
-				buf.LineArray.remove(LinePos, LinePos.right(buf)) // removing one char at LinePos
-
-				// given position identifier, delete directly
-				buf.Document.delete(posIdentifier)
-				// update numoflines in lineArray
-				buf.Update()
-
-			}
-		}
-
-		RedrawAll()
-
+		// update seqVector based on the last operation from the patch.
+		// assuming patch contains in increasing clock values.
+		seqVector[peer].Clock = reply.Patch[len(reply.Patch)-1].Clock
+		seqVector[peer].Dirty = true
+		RedrawAll() // TODO: highlighting
+		//RedrawAllWithPatchHighlight(reply.Patch)
 	}
 
 	if reply.PhaseTwo == false {
@@ -417,6 +407,93 @@ func pairWiseSync(peer string) {
 		return
 	} else {
 		// using RequesterClock to determine the patch to be sent over
+		// type SyncPhaseOneReply struct {
+		// 	PhaseTwo       bool        // set to true, if second phase is required
+		// 	RequesterClock uint64      // receiver's view of requester's clock
+		// 	Patch          []Operation // operations
+		// }
+		//SyncPhaseOneArgs
+		// type SyncPhaseTwoArgs struct {
+		// 	Clientid string // sender
+		// 	Patch []Operation // operations
+		// }
+
+		// this will need to ask from storage, but we can have a buffered operations for efficiency
+		// Currently, we assume every local operation is immediately write-back
+		patch := ExtractOperationsBetween(reply.RequesterClock+1, seqVector[localClient].Clock) // notice the plus one
+
+		SyncPhaseTwoArgs := SyncPhaseTwoArgs{
+			Clientid: localClient,
+			Patch:    patch,
+		}
+
+		var reply ValReply
+		peerServices[0].Call("EntangleClient.SyncPhaseTwo", SyncPhaseTwoArgs, &reply)
+
+	}
+
+}
+
+// Insert a patch to the local document and storage
+func insertPatch(patch []Operation) {
+
+	if patch != nil {
+		// going to insert this patch to the document
+		// EntangleClient.insert()
+		// buffer pointer, supports one tab currently
+		buf := CurView().Buf
+		for _, op := range patch { // TODO: refactor
+			if op.OpType == true { // insert operation
+				// the CRDTIndex is the index for the atom to be inserted in the document
+				posIdentifier := NewPos(op.Pos)
+				CRDTIndex, exists := buf.Document.Index(posIdentifier)
+				if exists == true { // if exists, don't insert
+					continue
+				}
+				// converting CRDTIndex to lineArray pos
+				LinePos := FromCharPos(CRDTIndex-1, buf) // off by 1
+				// This directly insert to document and lineArray directly bypassing the eventsQueue
+				// Let's insert to lineArray first
+				buf.LineArray.insert(LinePos, []byte(op.Atom))
+				// now insert to document
+				dbID := NextDocID()
+				buf.Document.insert(posIdentifier, op.Atom, dbID)
+				// update numoflines in lineArray
+				buf.Update()
+
+				go func(id uint64) { // do this in a separate go routine
+					err := InsertCharToDocDB(id, op.Atom, posIdentifier)
+					if err != nil {
+						fmt.Println("Error", err.Error())
+					}
+				}(dbID)
+
+			} else { // delete operation
+				// the CRDTIndex is the index for the atom to be deleted in the document
+				posIdentifier := NewPos(op.Pos)
+				CRDTIndex, exists := buf.Document.Index(posIdentifier)
+				if exists == false { // don't delete something not exited
+					continue
+				}
+				// converting CRDTIndex to lineArray pos
+				LinePos := FromCharPos(CRDTIndex-1, buf) // CRDT_index is one index higher
+				// This directly delet to document and lineArray directly bypassing the eventsQueue
+				buf.LineArray.remove(LinePos, LinePos.right(buf)) // removing one char at LinePos
+
+				// given position identifier, delete directly
+				_, dbID := buf.Document.delete(posIdentifier)
+				// update numoflines in lineArray
+				buf.Update()
+
+				go func() { // do this in a separate go routine
+					err := DeleteCharFromDocDB(dbID)
+					if err != nil {
+						fmt.Println("Error", err.Error())
+					}
+				}()
+
+			}
+		}
 
 	}
 

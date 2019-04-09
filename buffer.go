@@ -128,7 +128,11 @@ func NewBuffer(reader io.Reader, size int64, path string, cursorPosition []strin
 	b := new(Buffer)
 
 	// create a new document for now, later need to be restored from memory, id set to 1
-	b.Document = LoadDocument(uint8(1))
+	// currently hardcoding site numbers TODO:
+	i, _ := strconv.Atoi(clientID)
+	site := i % 100
+
+	b.Document = LoadDocument(uint8(site))
 
 	// get the entire content of the document ready passed into LineArray
 	text := b.Document.Content()
@@ -724,22 +728,23 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// insertMultiple is necessary as user can delete a text region indicated by a cursor range
 
 	// last thing in the local operation is to increment the logical clock
+	// Do not actually need to lock the clock increment because local inserts are serialized
 	seqVector[localClient].Clock = seqVector[localClient].Clock + 1
 	seqVector[localClient].Dirty = true
 
-	// id passed into the anonymous function to resolve race conditions.
+	// id and clock are passed into the anonymous function to resolve race conditions.
 	// can also do something similar in the delete function
 	// write operation to local storage and docdb, can open a writer in the buffer field using TX
-	go func(id uint64) { // do this in a separate go routine
-		err := writeOpToStorage(string(value), true, seqVector[localClient].Clock, posIdentifier)
+	go func(id, clock uint64, atom string, pos []Identifier) { // do this in a separate go routine
+		err := writeOpToStorage(atom, true, clock, pos)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-		err = InsertCharToDocDB(id, string(value), posIdentifier)
+		err = InsertCharToDocDB(id, atom, pos)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-	}(dbID)
+	}(dbID, seqVector[localClient].Clock, string(value), posIdentifier)
 	// REMOTE. This can also be wrapped into a function in connection.go
 	if peerServices[0] == nil { // checking connection
 		return
@@ -802,16 +807,16 @@ func (b *Buffer) remove(start, end Loc) string {
 	seqVector[localClient].Dirty = true
 
 	// write operation to local storage, can open a writer in the buffer field using TX
-	go func() { // do this in a separate go routine, note it is set to false
-		err := writeOpToStorage(string(value), false, seqVector[localClient].Clock, posIdentifier)
+	go func(id, clock uint64, atom string, pos []Identifier) { // do this in a separate go routine, note it is set to false
+		err := writeOpToStorage(atom, false, clock, pos)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-		err = DeleteCharFromDocDB(dbID)
+		err = DeleteCharFromDocDB(id)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-	}()
+	}(dbID, seqVector[localClient].Clock, string(value), posIdentifier)
 	// REMOTE. This can also be wrapped into a function in connection.go
 	// Currently, the following code assumes deleting just one char.
 
