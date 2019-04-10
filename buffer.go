@@ -396,7 +396,7 @@ func (b *Buffer) ReOpen() {
 }
 
 // Update fetches the string from the rope and updates the `text` and `lines` in the buffer
-func (b *Buffer) Update() { //?? it only set numLines
+func (b *Buffer) Update() { //it only set numLines
 	b.NumLines = len(b.lines)
 }
 

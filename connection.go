@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"sync"
 )
 
 // args in insert(args)
@@ -86,6 +87,9 @@ var peerAddresses []string
 // a slice hoding rpc service of peers
 var peerServices []*rpc.Client
 
+// remote insertion to Lines lock
+var linesLock = &sync.Mutex{}
+
 // a insert char message from a peer.
 func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// decompose InsertArgs
@@ -99,19 +103,23 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	}
 
 	buf := CurView().Buf // buffer pointer, supports one tab currently
+
+	// first insert to document.
+	dbID := NextDocID() // blocking
+	buf.Document.insert(posIdentifier, args.Pair.Atom, dbID)
+	// compute CRDTIndex after inserting to the document
 	// the CRDTIndex is the index for the atom to be inserted in the document
 	CRDTIndex, _ := buf.Document.Index(posIdentifier)
+
+	linesLock.Lock() // locking
 	// converting CRDTIndex to lineArray pos
 	LinePos := FromCharPos(CRDTIndex-1, buf) // off by 1
 	// This directly insert to document and lineArray directly bypassing the eventsQueue
 	// Let's insert to lineArray first
 	buf.LineArray.insert(LinePos, atom)
-	// now insert to document. TODO: can moved into the go routine below
-	dbID := NextDocID() // blocking
-	buf.Document.insert(posIdentifier, args.Pair.Atom, dbID)
-
 	// update numoflines in lineArray
 	buf.Update()
+	linesLock.Unlock()
 
 	RedrawAll()
 	// set clock for the peer, don't need to increment
@@ -119,13 +127,14 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	seqVector[peer].Dirty = true
 
 	// id passed into the anonymous function to resolve race conditions.
+	// passed into arguments shouldnt matter actually over here. same applies to delete
 	// can also do something similar in the delete function
-	go func(id uint64) {
-		err := InsertCharToDocDB(id, string(atom), posIdentifier)
+	go func(id uint64, atom string, pos []Identifier) {
+		err := InsertCharToDocDB(id, atom, pos)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-	}(dbID)
+	}(dbID, string(atom), posIdentifier)
 
 	return nil
 }
@@ -144,29 +153,29 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 	buf := CurView().Buf // buffer pointer, supports one tab currently
 	// the CRDTIndex is the index for the atom to be deleted in the document
 	CRDTIndex, _ := buf.Document.Index(posIdentifier)
+	// given position identifier, delete directly
+	_, dbID := buf.Document.delete(posIdentifier)
 
+	linesLock.Lock()
 	// converting CRDTIndex to lineArray pos
 	LinePos := FromCharPos(CRDTIndex-1, buf) // CRDT_index is one index higher
 	// This directly delet to document and lineArray directly bypassing the eventsQueue
 	buf.LineArray.remove(LinePos, LinePos.right(buf)) // removing one char at LinePos
-
-	// given position identifier, delete directly
-	_, dbID := buf.Document.delete(posIdentifier)
-
 	// update numoflines in lineArray
 	buf.Update()
+	linesLock.Unlock()
 
 	RedrawAll()
 	// set clock for the peer, don't need to increment
 	seqVector[peer].Clock = peerClock
 	seqVector[peer].Dirty = true
 
-	go func() { // do this in a separate go routine, note it is set to false
-		err := DeleteCharFromDocDB(dbID)
+	go func(id uint64) { // do this in a separate go routine, note it is set to false
+		err := DeleteCharFromDocDB(id)
 		if err != nil {
 			fmt.Println("Error", err.Error())
 		}
-	}()
+	}(dbID)
 
 	return nil
 }
@@ -461,12 +470,13 @@ func insertPatch(patch []Operation) {
 				// update numoflines in lineArray
 				buf.Update()
 
-				go func(id uint64) { // do this in a separate go routine
-					err := InsertCharToDocDB(id, op.Atom, posIdentifier)
+				// arguments must passed in but may still has race condition
+				go func(id uint64, atom string, pos []Identifier) {
+					err := InsertCharToDocDB(id, atom, pos)
 					if err != nil {
 						fmt.Println("Error", err.Error())
 					}
-				}(dbID)
+				}(dbID, op.Atom, posIdentifier)
 
 			} else { // delete operation
 				// the CRDTIndex is the index for the atom to be deleted in the document
@@ -485,12 +495,13 @@ func insertPatch(patch []Operation) {
 				// update numoflines in lineArray
 				buf.Update()
 
-				go func() { // do this in a separate go routine
-					err := DeleteCharFromDocDB(dbID)
+				// still unsafe concurrently
+				go func(id uint64) { // do this in a separate go routine, note it is set to false
+					err := DeleteCharFromDocDB(id)
 					if err != nil {
 						fmt.Println("Error", err.Error())
 					}
-				}()
+				}(dbID)
 
 			}
 		}
