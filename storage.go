@@ -35,11 +35,18 @@ var docdb *sql.DB
 // long-lived Statement for local operations insert
 var Stmt *sql.Stmt
 
+// writer's lock of Stmt
+var StmtLock sync.Mutex
+
 // char insert statement
 var docInsertStmt *sql.Stmt
 
 // char delete statement
 var docDeleteStmt *sql.Stmt
+
+// doc writer lock
+
+var docStmtLock sync.Mutex
 
 // the docdbID of very last inserted char. Protected by a lock
 type docdbID struct {
@@ -199,8 +206,9 @@ func loadLastDocID(id *uint64) {
 func InsertCharToDocDB(id uint64, atom string, posIdentifier []Identifier) error {
 	// convert pos to bytes array
 	posBytes := PosBytes(posIdentifier)
-
+	docStmtLock.Lock()
 	_, err := docInsertStmt.Exec(id, atom, posBytes)
+	docStmtLock.Unlock()
 	if err != nil {
 		log.Fatal(err)
 		return errors.New("unable to write to char to docDB")
@@ -212,8 +220,9 @@ func InsertCharToDocDB(id uint64, atom string, posIdentifier []Identifier) error
 
 // Delete a char from the docDB
 func DeleteCharFromDocDB(id uint64) error {
-
+	docStmtLock.Lock()
 	_, err := docDeleteStmt.Exec(id)
+	docStmtLock.Unlock()
 	if err != nil {
 		log.Fatal(err)
 		return errors.New("unable to delete a char from docDB")
@@ -275,8 +284,9 @@ func writeOpToStorage(value string, OpType bool, clock uint64, pos []Identifier)
 
 	// convert pos to bytes array
 	posBytes := PosBytes(pos)
-
+	StmtLock.Lock()
 	_, err := Stmt.Exec(clock, value, OpType, posBytes)
+	StmtLock.Unlock()
 	if err != nil {
 		log.Fatal(err)
 		return errors.New("unable to write to ops table")
