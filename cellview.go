@@ -162,7 +162,8 @@ func (c *CellView) Draw(buf *Buffer, top, height, left, width int) {
 				if colN == matchingBrace.X && lineN == matchingBrace.Y && !buf.Cursor.HasSelection() {
 					st = curStyle.Reverse(true)
 				}
-				if viewCol < len(c.lines[viewLine]) {
+				// add a index check case here "viewline < len(c.lines)"
+				if viewLine < len(c.lines) && viewCol < len(c.lines[viewLine]) {
 					c.lines[viewLine][viewCol] = &Char{Loc{viewCol, viewLine}, Loc{colN, lineN}, char, char, st, 1}
 				}
 			}

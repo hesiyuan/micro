@@ -299,12 +299,24 @@ func GeneratePos(lp, rp []Identifier, site uint8) ([]Identifier, bool) {
 	var r uint16
 	if len(rp) > len(lp) { // easy case, make a random integer in new level
 		// TODO: need to account for cases where rp[len(lp)].Ident == 1
-		if rp[len(lp)].Ident == 1 {
-			r = 0
-		} else {
-			r = random(0, rp[len(lp)].Ident)
+		for i := len(lp); i < len(rp); i++ {
+			if rp[i].Ident == 1 {
+				r = 0
+				p = append(p, Identifier{r, site})
+				r := random(0, ^uint16(0))
+				p = append(p, Identifier{r, site})
+				return p, true
+			} else if rp[i].Ident == 0 {
+				// just append all the identifiers except the last
+				p = append(p, rp[i])
+				continue
+			} else {
+				r = random(0, rp[i].Ident)
+				p = append(p, Identifier{r, site})
+				return p, true
+			}
+			//p = append(p, Identifier{r, site})
 		}
-		p = append(p, Identifier{r, site})
 	}
 	return p, true
 }
