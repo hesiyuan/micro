@@ -403,6 +403,7 @@ func makeSeqVector() {
 
 // This function loads the storage into runtime seqVector.
 // This should be called once when entangleText launchs
+// This also recovers from ops if possible
 // Pre: seqVector DS must exist.
 // Note: This func has not been tested
 func loadStorageIntoSeqVector() {
@@ -420,7 +421,6 @@ func loadStorageIntoSeqVector() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer rows.Close()
 
 	counter := uint8(0)
 
@@ -435,14 +435,38 @@ func loadStorageIntoSeqVector() {
 		counter = counter + 1
 	}
 
-	if counter != numPeers {
-		err := errors.New("SeqVector table corrupted")
-		fmt.Print(err)
+	rows.Close()
+	db.Close()
+
+	// recover from ops table, do a query on max(ops.clock)
+	// This should be done when seqVector is not updated to the most recently added ops
+	rows, err = opsdb.Query("select MAX(clock) as Lastclock from ops")
+	var lastClock uint64
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() { // only iterate once
+		err = rows.Scan(&lastClock)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	err = rows.Err()
 	if err != nil {
 		log.Fatal(err)
+	}
+	// set to the max
+	if lastClock > seqVector[localClient].Clock {
+		seqVector[localClient].Clock = lastClock
+	}
+
+	if counter != numPeers {
+		err := errors.New("SeqVector table corrupted")
+		fmt.Print(err)
 	}
 
 }

@@ -104,6 +104,7 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 
 	buf := CurView().Buf // buffer pointer, supports one tab currently
 
+	linesLock.Lock() // locking
 	// first insert to document.
 	dbID := NextDocID() // blocking
 	buf.Document.insert(posIdentifier, args.Pair.Atom, dbID)
@@ -111,7 +112,6 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 	// the CRDTIndex is the index for the atom to be inserted in the document
 	CRDTIndex, _ := buf.Document.Index(posIdentifier)
 
-	linesLock.Lock() // locking
 	// converting CRDTIndex to lineArray pos
 	LinePos := FromCharPos(CRDTIndex-1, buf) // off by 1
 	// This directly insert to document and lineArray directly bypassing the eventsQueue
@@ -123,8 +123,10 @@ func (ec *EntangleClient) Insert(args *InsertArgs, reply *ValReply) error {
 
 	RedrawAll()
 	// set clock for the peer, don't need to increment
-	seqVector[peer].Clock = peerClock
-	seqVector[peer].Dirty = true
+	if seqVector[peer].Clock < peerClock {
+		seqVector[peer].Clock = peerClock
+		seqVector[peer].Dirty = true
+	}
 
 	// id passed into the anonymous function to resolve race conditions.
 	// passed into arguments shouldnt matter actually over here. same applies to delete
@@ -150,13 +152,13 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 		return nil
 	}
 
+	linesLock.Lock()
 	buf := CurView().Buf // buffer pointer, supports one tab currently
 	// the CRDTIndex is the index for the atom to be deleted in the document
 	CRDTIndex, _ := buf.Document.Index(posIdentifier)
 	// given position identifier, delete directly
 	_, dbID := buf.Document.delete(posIdentifier)
 
-	linesLock.Lock()
 	// converting CRDTIndex to lineArray pos
 	LinePos := FromCharPos(CRDTIndex-1, buf) // CRDT_index is one index higher
 	// This directly delet to document and lineArray directly bypassing the eventsQueue
@@ -167,8 +169,10 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 
 	RedrawAll()
 	// set clock for the peer, don't need to increment
-	seqVector[peer].Clock = peerClock
-	seqVector[peer].Dirty = true
+	if seqVector[peer].Clock < peerClock { // only record the max clock
+		seqVector[peer].Clock = peerClock
+		seqVector[peer].Dirty = true
+	}
 
 	go func(id uint64) { // do this in a separate go routine, note it is set to false
 		err := DeleteCharFromDocDB(id)

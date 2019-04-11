@@ -710,7 +710,9 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 		return
 	}
 	// LOCAL
-	b.IsModified = true            // where it is set to false ?
+	b.IsModified = true // where it is set to false ?
+
+	index := ToCharPos(pos, b)     // may need to be called before linearray insert
 	b.LineArray.insert(pos, value) // TODO: change to b.document.insert
 
 	b.Update()
@@ -722,7 +724,6 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	// START is at index 0, may be off a little.
 	// given pos, and a byte array (usually just one byte), insert sequentially to CRDT
 	// first converts pos into CRDT document index. The index is the would-be inserted index
-	index := ToCharPos(pos, b) // may need to be called before linearray insert
 	dbID := NextDocID()
 	posIdentifier, _ := b.Document.insertMultiple(b.Document.pairs[index].Pos, value, dbID)
 	// insertMultiple is necessary as user can delete a text region indicated by a cursor range

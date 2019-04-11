@@ -12,7 +12,7 @@ import (
 // selection.
 type Cursor struct { // construct a cursor for each peer later TODO:
 	buf *Buffer
-	Loc
+	Loc // has {x, y}
 
 	// Last cursor x position
 	LastVisualX int
@@ -362,7 +362,7 @@ func (c *Cursor) GetCharPosInLine(lineNum, visualPos int) int {
 }
 
 // GetVisualX returns the x value of the cursor in visual spaces
-func (c *Cursor) GetVisualX() int {
+func (c *Cursor) GetVisualX() int {// called periodically
 	runes := []rune(c.buf.Line(c.Y))
 	tabSize := int(c.buf.Settings["tabsize"].(float64))
 	if c.X > len(runes) {

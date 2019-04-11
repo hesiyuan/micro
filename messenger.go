@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/mattn/go-runewidth"
+	runewidth "github.com/mattn/go-runewidth"
 	"github.com/zyedidia/clipboard"
 	"github.com/zyedidia/micro/cmd/micro/shellwords"
 	"github.com/zyedidia/tcell"
@@ -149,6 +149,7 @@ func (m *Messenger) PromptText(msg ...interface{}) {
 	m.AddLog(displayMessage)
 }
 
+// code structure similar to LetterPrompt and Prompt
 // YesNoPrompt asks the user a yes or no question (waits for y or n) and returns the result
 func (m *Messenger) YesNoPrompt(prompt string) (bool, bool) {
 	m.hasPrompt = true
@@ -156,21 +157,21 @@ func (m *Messenger) YesNoPrompt(prompt string) (bool, bool) {
 
 	_, h := screen.Size()
 	for {
-		m.Clear()
-		m.Display()
+		m.Clear()   // clear the message
+		m.Display() // displays the message
 		screen.ShowCursor(Count(m.message), h-1)
 		screen.Show()
-		event := <-events
+		event := <-events // blocking receive from tcell events
 
 		switch e := event.(type) {
 		case *tcell.EventKey:
 			switch e.Key() {
 			case tcell.KeyRune:
-				if e.Rune() == 'y' || e.Rune() == 'Y' {
+				if e.Rune() == 'y' || e.Rune() == 'Y' { // if received yes
 					m.AddLog("\t--> y")
 					m.hasPrompt = false
 					return true, false
-				} else if e.Rune() == 'n' || e.Rune() == 'N' {
+				} else if e.Rune() == 'n' || e.Rune() == 'N' { // if received no
 					m.AddLog("\t--> n")
 					m.hasPrompt = false
 					return false, false
