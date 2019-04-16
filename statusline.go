@@ -47,10 +47,10 @@ func (sline *Statusline) Display() {
 
 	connectionStatus := ""
 	// currently only one peer
-	if peerServices[0] != nil {
-		connectionStatus = "online"
-	} else {
+	if IsOffline() {
 		connectionStatus = "offline"
+	} else {
+		connectionStatus = "online"
 	}
 
 	file += " " + connectionStatus

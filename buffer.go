@@ -746,8 +746,9 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 			fmt.Println("Error", err.Error())
 		}
 	}(dbID, seqVector[localClient].Clock, string(value), posIdentifier)
-	// REMOTE. This can also be wrapped into a function in connection.go
-	if peerServices[0] == nil { // checking connection
+
+	// REMOTE.
+	if IsOffline() { // checking connection
 		return
 	}
 	// now send to peers
@@ -761,22 +762,30 @@ func (b *Buffer) insert(pos Loc, value []byte) {
 	}
 	var kvVal ValReply
 	// currently only one peer. This is blocking, in production, may need to timeout TODO:
-	go func() {
-		c := make(chan error, 1) // not really necessary
-		select {                 // select blocks until one of the following cases is able to run
-		case c <- peerServices[0].Call("EntangleClient.Insert", InsertArgs, &kvVal):
-			// use err and reply
-			v := <-c
-			if v != nil { // for whatever reason, there is an error
-				peerServices[0] = nil // set to nil naively and immediately
-			}
-		case <-time.After(5 * time.Second): // receive from time.After channel
-			// call timed out, setting peerServices[0] to nil for now
-			peerServices[0] = nil
+	// This can be put in connection.go
+
+	for i, _ := range peerServices {
+
+		if peerServices[i] == nil {
+			continue
 		}
 
-	}() // rpc
+		go func(index int) {
+			c := make(chan error, 1) // not really necessary
+			select {                 // select blocks until one of the following cases is able to run
+			case c <- peerServices[index].Call("EntangleClient.Insert", InsertArgs, &kvVal):
+				// use err and reply
+				v := <-c
+				if v != nil { // for whatever reason, there is an error
+					peerServices[index] = nil // set to nil naively and immediately
+				}
+			case <-time.After(5 * time.Second): // receive from time.After channel
+				// call timed out, setting peerServices[0] to nil for now
+				peerServices[index] = nil
+			}
 
+		}(i) // rpc
+	}
 }
 
 // remove from start up to end (not including end). This is used by many other files
@@ -821,7 +830,7 @@ func (b *Buffer) remove(start, end Loc) string {
 	// REMOTE. This can also be wrapped into a function in connection.go
 	// Currently, the following code assumes deleting just one char.
 
-	if peerServices[0] == nil { // checking connection
+	if IsOffline() { // checking connection
 		return value
 	}
 	// now send to peers
@@ -836,21 +845,28 @@ func (b *Buffer) remove(start, end Loc) string {
 	var kvVal ValReply
 	// currently only one peer. This is blocking, in production, may need to timeout TODO:
 	// later need to extent to loops
-	go func() {
-		c := make(chan error, 1) // not really necessary
-		select {                 // select blocks until one of the following cases is able to run
-		case c <- peerServices[0].Call("EntangleClient.Delete", DeleteArgs, &kvVal):
-			// use err and reply
-			v := <-c
-			if v != nil { // for whatever reason, there is an error
-				peerServices[0] = nil // set to nil naively and immediately
-			}
-		case <-time.After(5 * time.Second): // receive from time.After channel
-			// call timed out, setting peerServices[0] to nil for now
-			peerServices[0] = nil
+	for i, _ := range peerServices {
+
+		if peerServices[i] == nil {
+			continue
 		}
 
-	}() // rpc
+		go func(index int) {
+			c := make(chan error, 1) // not really necessary
+			select {                 // select blocks until one of the following cases is able to run
+			case c <- peerServices[index].Call("EntangleClient.Delete", DeleteArgs, &kvVal):
+				// use err and reply
+				v := <-c
+				if v != nil { // for whatever reason, there is an error
+					peerServices[index] = nil // set to nil naively and immediately
+				}
+			case <-time.After(5 * time.Second): // receive from time.After channel
+				// call timed out, setting peerServices[0] to nil for now
+				peerServices[index] = nil
+			}
+
+		}(i) // rpc
+	}
 
 	return value
 }

@@ -406,7 +406,7 @@ func SeqVectorToStorage(update bool) {
 func makeSeqVector() {
 	// initialize peerAddresses and seqVector first
 	for i := range peerAddresses {
-		seqVector[peerAddresses[i]] = &seqVEntry{0, false}
+		seqVector[peerAddresses[i].IP_PORT] = &seqVEntry{0, false}
 	}
 
 }

@@ -86,6 +86,8 @@ func LoadInput() []*Buffer {
 	// 3. If there is no input file and the input is a terminal, an empty buffer
 	// should be opened
 
+	// The first argument should be a configuration file
+
 	var filename string
 	var input []byte
 	var err error
@@ -93,9 +95,10 @@ func LoadInput() []*Buffer {
 	buffers := make([]*Buffer, 0, len(args))
 
 	if len(args) > 0 { // NOTE: the first two arguments are localIP and remoteIP for testing
-		// Option 1
+		// first argument args[0] is configuration file
+
 		// We go through each file and load it. can load multiple files into tabs?
-		for i := 2; i < len(args); i++ { // CHANGED from 0-> 2
+		for i := 1; i < len(args); i++ { // CHANGED from 0-> 2
 			if strings.HasPrefix(args[i], "+") {
 				if strings.Contains(args[i], ":") {
 					split := strings.Split(args[i], ":")

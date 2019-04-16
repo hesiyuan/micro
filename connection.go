@@ -2,6 +2,7 @@ package main
 
 // This is the connection code with other peers for now.
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -70,6 +72,11 @@ type ValReply struct {
 	Val string // value; depends on the call
 }
 
+type peerInfo struct {
+	IP_PORT string
+	Share   bool // sharing or not at the moment
+}
+
 type EntangleClient int
 
 // Command line arg. Can be based on a config file
@@ -82,7 +89,7 @@ var localClient string
 var clientID string
 
 //a slice holding peer ip addresses
-var peerAddresses []string
+var peerAddresses []peerInfo
 
 // a slice hoding rpc service of peers
 var peerServices []*rpc.Client
@@ -188,10 +195,16 @@ func (ec *EntangleClient) Delete(args *DeleteArgs, reply *ValReply) error {
 func (ec *EntangleClient) Connect(args *ConnectArgs, reply *ValReply) error {
 	// This set the global slice peerServices
 	// currently only one peer, later need to be changed. TODO:
-	peerServices[0], _ = rpc.Dial("tcp", peerAddresses[1])
+	index, status := GetPeerServicesIndex(args.Clientid)
+
+	if !status {
+		return errors.New("peer not in my peerAddresses")
+	}
+
+	peerServices[index], _ = rpc.Dial("tcp", args.Clientid)
 
 	// the above may fail as well
-	if peerServices[0] == nil {
+	if peerServices[index] == nil {
 		return errors.New("unable to connect to the requester")
 	}
 	// now, connected redraw the status line
@@ -287,19 +300,55 @@ func InitPeersInfo() {
 	// Parse args.
 	usage := fmt.Sprintf("Usage: %s [local:port] [remote:port] [filenames]\n")
 
+	//peerAddresses = make([]string, 2)
+
 	if len(args) < 2 {
 		fmt.Printf(usage)
 		os.Exit(1)
 	}
 
-	localClient = args[0] // local ip:port global
-	clientID = assembleClientID(localClient)
-	numPeers = 2 // including itself
+	ReadConnectionConfig(args)
 
-	peerAddresses = make([]string, 2)
-	// initialize peerAddresses first
-	for i := range peerAddresses {
-		peerAddresses[i] = args[i]
+	localClient = peerAddresses[0].IP_PORT // local ip:port global
+	clientID = assembleClientID(localClient)
+	numPeers = uint8(len(peerAddresses)) // including itself
+
+}
+
+// read configuration file, intializes peerAddresses essentially
+func ReadConnectionConfig(args []string) {
+	// first argument is the config file
+	file, err := os.Open(args[0])
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var line, ip_port string
+	var share bool
+	for scanner.Scan() {
+		line = scanner.Text()
+		s := strings.Split(line, " ")
+		ip_port = s[0]
+
+		if s[1] == "S" {
+			share = true
+		} else {
+			share = false
+		}
+
+		peer := peerInfo{
+			ip_port,
+			share,
+		}
+
+		peerAddresses = append(peerAddresses, peer)
+
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 
 }
@@ -326,15 +375,20 @@ func InitConnections() {
 	}
 
 	// then dial
-	peerServices = make([]*rpc.Client, 1) // must use "="" to assign global variables
+	peerServices = make([]*rpc.Client, numPeers-1) // must use "="" to assign global variables
 	for i := range peerAddresses {
 		if i == 0 { // peerAddresses[0] is now itself
 			continue
 		}
+
+		if peerAddresses[i].Share == false {
+			peerServices[i-1] = nil
+			continue
+		}
 		// Connect to other peers via RPC.
-		peerServices[i-1], err = rpc.Dial("tcp", peerAddresses[i]) // can dial periodically
+		peerServices[i-1], err = rpc.Dial("tcp", peerAddresses[i].IP_PORT) // can dial periodically
 		// based on the err, do not have to quit in checkError
-		checkErrorAndConnect(err)
+		checkErrorAndConnect(i, err)
 	}
 
 	// this can also reside in the micro.go
@@ -347,32 +401,25 @@ func InitConnections() {
 
 }
 
-// // check
-// func checkError (err error) {
-
-// }
-
 // If error is non-nil, print it out and halt.
 // This function is augmented with a RPC call to connect, the remote peer
 // will be requested to dial to this client as well, if no err.
-func checkErrorAndConnect(err error) {
+func checkErrorAndConnect(index int, err error) {
 	if err != nil {
-		//fmt.Fprintf(os.Stderr, "MyError: ", err.Error())
 		fmt.Println("Error", err.Error())
-		//os.Exit(1) // Let's do not exit, when in production
 	} else { // if no error, RPC connect
 		// now send to peers
 		ConnectArgs := ConnectArgs{
 			Clientid: localClient, // TODO
 		}
 		var kvVal ValReply
-		// asynchronously, does not matter if synchronous. TODO: change invokee
+		// asynchronously, does not matter if synchronous.
 		go func() {
-			err := peerServices[0].Call("EntangleClient.Connect", ConnectArgs, &kvVal)
+			err := peerServices[index-1].Call("EntangleClient.Connect", ConnectArgs, &kvVal)
 			// let's follow the original protocol
 			// initiating pair-wise sync protocol here
 			if err == nil {
-				pairWiseSync(peerAddresses[1]) // TODO: change argument
+				pairWiseSync(peerAddresses[index].IP_PORT, index-1)
 			} else {
 				fmt.Println("Error", err.Error())
 			}
@@ -381,8 +428,33 @@ func checkErrorAndConnect(err error) {
 	}
 }
 
+// check whether local peer is not connected to any peers
+// Returns true if offline
+func IsOffline() bool {
+
+	for _, e := range peerServices {
+		if e != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Given a IP_PORT string, find the index of peerServices
+func GetPeerServicesIndex(IP_PORT string) (uint8, bool) {
+
+	for i, e := range peerAddresses {
+		if e.IP_PORT == IP_PORT {
+			return uint8(i - 1), true
+		}
+	}
+
+	return 0, false
+}
+
 // The pair-wise synchronization protocol here
-func pairWiseSync(peer string) {
+func pairWiseSync(peer string, serviceIndex int) {
 	// Phase one: requester sending <local clock, peer clock>
 	// type SyncPhaseOneArgs struct {
 	// 	Clientid      string // requester
@@ -395,7 +467,7 @@ func pairWiseSync(peer string) {
 		ReceiverClock: seqVector[peer].Clock,
 	}
 	var reply SyncPhaseOneReply
-	peerServices[0].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &reply)
+	peerServices[serviceIndex].Call("EntangleClient.SyncPhaseOne", SyncPhaseOneArgs, &reply)
 
 	// get some results back from the receiver
 	// type SyncPhaseOneReply struct {
@@ -441,7 +513,7 @@ func pairWiseSync(peer string) {
 		}
 
 		var reply ValReply
-		peerServices[0].Call("EntangleClient.SyncPhaseTwo", SyncPhaseTwoArgs, &reply)
+		peerServices[serviceIndex].Call("EntangleClient.SyncPhaseTwo", SyncPhaseTwoArgs, &reply)
 
 	}
 
